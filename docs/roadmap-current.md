@@ -38,7 +38,7 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 | Phase 3 | 战斗动作执行 | 已完成 |
 | Phase 4A | 地图 / 奖励 / 宝箱 | 代码已完成（含宝箱 relic 选择），部分已实机验证 |
 | Phase 4B | 事件 / 休息点 | 已完成（代码+MCP+文档），待实机验证 |
-| Phase 4C | 商店 | 未开始 |
+| Phase 4C | 商店 | 已完成（代码+MCP+文档），待实机验证 |
 | Phase 5 | MCP 完整化 | 基础已完成，随 4B/4C 同步扩展 |
 | Phase 6 | 集成与回归 | 未开始 |
 
@@ -72,6 +72,12 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 | `choose_treasure_relic` | 代码已完成，待验证 |
 | `choose_event_option` | 代码已完成，待验证 |
 | `choose_rest_option` | 代码已完成，待验证 |
+| `open_shop_inventory` | 代码已完成，待验证 |
+| `close_shop_inventory` | 代码已完成，待验证 |
+| `buy_card` | 代码已完成，待验证 |
+| `buy_relic` | 代码已完成，待验证 |
+| `buy_potion` | 代码已完成，待验证 |
+| `remove_card_at_shop` | 代码已完成，待验证 |
 
 ### 已实现状态字段
 
@@ -85,8 +91,8 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 | `chest.is_opened` / `chest.has_relic_been_claimed` / `chest.relic_options` | 代码已完成，待验证 |
 | `event.event_id` / `event.title` / `event.description` / `event.is_finished` / `event.options` | 代码已完成，待验证 |
 | `rest.options` | 代码已完成，待验证 |
-| `shop` | 仍为 `null` |
-| `rest` | 仍为 `null` |
+| `shop` | 代码已完成，待验证 |
+| `rest` | 代码已完成，待验证 |
 | `game_over` | 仍为 `null` |
 
 ### MCP 工具
@@ -109,6 +115,12 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 - `choose_treasure_relic`
 - `choose_event_option`
 - `choose_rest_option`
+- `open_shop_inventory`
+- `close_shop_inventory`
+- `buy_card`
+- `buy_relic`
+- `buy_potion`
+- `remove_card_at_shop`
 
 ---
 
@@ -157,10 +169,12 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 
 ### T-4: Phase 4C 商店系统
 
-- 逆向 `NMerchantRoom` / `NMerchantInventory` 子节点结构
-- 实现 `ShopPayload`（商品列表、价格、删牌服务等）
-- 实现 `buy_card`、`buy_relic`、`buy_potion`、`remove_card_at_shop`
-- MCP + 文档同步
+- [x] 逆向 `NMerchantRoom` / `NMerchantInventory` / `NMerchantCardRemoval` 结构
+- [x] 实现 `ShopPayload`（库存开关、商品列表、价格、删牌服务等）
+- [x] 实现 `open_shop_inventory` / `close_shop_inventory`
+- [x] 实现 `buy_card`、`buy_relic`、`buy_potion`、`remove_card_at_shop`
+- [x] MCP + 文档同步
+- [ ] 实机验证
 
 涉及文件：同 T-2
 
@@ -183,7 +197,7 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 1. **T-0**：接手收尾（当前）
 2. **T-2**：事件系统（C# + MCP + 文档一站式完成）
 3. **T-3**：休息点系统
-4. **T-4**：商店系统
+4. **T-4**：商店系统（已完成，待实机验证）
 5. **T-5**：Game Over
 6. **T-1**：实机回归（穿插在有游戏环境时进行）
 7. **T-6**：重构（所有功能稳定后）
@@ -198,4 +212,4 @@ Claude 每完成一个功能阶段，向 Codex 提交具体 diff 或文件进行
 2. Windows 下不能热替换已加载的 Mod DLL，所有实机验证都依赖"关游戏 → 安装 → 重开"。
 3. STS2 更新后可能导致逆向入口失效，事件、商店、休息点都要优先找稳定入口。
 4. `map.nodes` 目前只提供图结构和运行时状态，不提供内建评分；路线规划逻辑必须在上层策略做。
-5. 事件 / 休息点 / 商店的 UI 结构未经逆向确认，实现前需先用 decompiled 代码研究节点树。
+5. 事件 / 休息点 / 商店的 UI 结构已完成一轮逆向；游戏更新后仍需优先复核入口稳定性。

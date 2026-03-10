@@ -65,7 +65,7 @@
 | `MAP` | 地图界面 |
 | `COMBAT` | 战斗中 |
 | `EVENT` | 事件交互 |
-| `SHOP` | 商店（暂未实现状态提取） |
+| `SHOP` | 商店 |
 | `REST` | 休息点 |
 | `REWARD` | 奖励结算 / 卡牌奖励选择 |
 | `CHEST` | 宝箱房 |
@@ -127,7 +127,7 @@
 | `selection` | object \| null | 选牌状态（仅选牌界面存在） |
 | `chest` | object \| null | 宝箱状态（仅宝箱房存在） |
 | `event` | object \| null | 事件状态（仅事件房存在） |
-| `shop` | null | 商店状态（暂未实现） |
+| `shop` | object \| null | 商店状态（仅商店房存在） |
 | `rest` | object \| null | 休息点状态（仅休息点存在） |
 | `game_over` | null | 游戏结束状态（暂未实现） |
 
@@ -300,7 +300,7 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `kind` | string | 选牌类型（当前为 `"deck_card_select"`） |
+| `kind` | string | 选牌类型（`"deck_card_select"` 或 `"deck_upgrade_select"`） |
 | `prompt` | string | 提示文字（如"选择一张牌移除"） |
 | `cards[]` | object[] | 可选卡牌列表 |
 
@@ -374,6 +374,36 @@
 | `title` | string | 操作标题 |
 | `description` | string | 操作描述 |
 | `is_enabled` | boolean | 操作是否可用（如 `SMITH` 需要有可升级卡牌） |
+
+### `shop` 子结构
+
+当 `screen` 为 `SHOP` 时存在。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `is_open` | boolean | 商店库存面板是否已打开 |
+| `can_open` | boolean | 当前是否可以打开库存面板 |
+| `can_close` | boolean | 当前是否可以关闭库存面板 |
+| `cards[]` | object[] | 可购买卡牌列表 |
+| `relics[]` | object[] | 可购买遗物列表 |
+| `potions[]` | object[] | 可购买药水列表 |
+| `card_removal` | object \| null | 删牌服务状态 |
+
+#### `shop.cards[]` / `shop.relics[]` / `shop.potions[]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `index` | number | 对应 `buy_card` / `buy_relic` / `buy_potion` 的 `option_index` |
+| `name` | string | 商品名称 |
+| `price` | number | 当前价格 |
+| `available` | boolean | 当前是否仍可购买 |
+
+#### `shop.card_removal`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `price` | number | 当前删牌服务价格 |
+| `available` | boolean | 当前是否可购买删牌服务 |
 
 ### 状态示例：战斗中
 
@@ -883,7 +913,7 @@
 
 - **前提**：`screen = "CARD_SELECTION"`，`selection.cards[]` 非空
 - **参数**：`option_index`（必填）：`selection.cards[]` 的索引
-- **行为**：选择牌并自动确认。当前主要覆盖**删牌**场景
+- **行为**：选择牌并自动确认。当前覆盖**删牌**和**升级牌**场景
 - **稳定条件**：离开选牌界面
 - **超时**：10 秒
 
@@ -968,6 +998,85 @@
 
 ```
 请求: { "action": "choose_rest_option", "option_index": 0 }
+```
+
+### `open_shop_inventory`
+
+打开商店库存面板。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = false，`shop.can_open` = true
+- **参数**：无
+- **稳定条件**：库存面板打开，`shop.is_open` 变为 true
+- **超时**：10 秒
+
+```
+请求: { "action": "open_shop_inventory" }
+```
+
+### `close_shop_inventory`
+
+关闭商店库存面板。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = true，`shop.can_close` = true
+- **参数**：无
+- **稳定条件**：库存面板关闭，`shop.is_open` 变为 false
+- **超时**：10 秒
+
+```
+请求: { "action": "close_shop_inventory" }
+```
+
+### `buy_card`
+
+购买商店中的一张卡牌。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = true，`shop.cards[]` 中存在 `available`=true 的条目
+- **参数**：`option_index`（必填）：`shop.cards[]` 的索引
+- **稳定条件**：金币变化、商品消失/失效，或界面切换
+- **超时**：10 秒
+
+```
+请求: { "action": "buy_card", "option_index": 0 }
+```
+
+### `buy_relic`
+
+购买商店中的一个遗物。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = true，`shop.relics[]` 中存在 `available`=true 的条目
+- **参数**：`option_index`（必填）：`shop.relics[]` 的索引
+- **稳定条件**：金币变化、商品消失/失效，或界面切换
+- **超时**：10 秒
+
+```
+请求: { "action": "buy_relic", "option_index": 0 }
+```
+
+### `buy_potion`
+
+购买商店中的一瓶药水。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = true，`shop.potions[]` 中存在 `available`=true 的条目
+- **参数**：`option_index`（必填）：`shop.potions[]` 的索引
+- **稳定条件**：金币变化、商品消失/失效，或界面切换
+- **超时**：10 秒
+
+```
+请求: { "action": "buy_potion", "option_index": 0 }
+```
+
+### `remove_card_at_shop`
+
+购买商店删牌服务，进入牌库选牌界面。
+
+- **前提**：`screen` = `SHOP`，`shop.is_open` = true，`shop.card_removal.available` = true
+- **参数**：无
+- **行为**：动作本身采用 fire-and-forget，避免 HTTP 调用阻塞在后续选牌流程
+- **稳定条件**：界面切换到 `CARD_SELECTION`，或库存状态发生变化
+- **超时**：10 秒
+
+```
+请求: { "action": "remove_card_at_shop" }
 ```
 
 ### `proceed`
@@ -1058,6 +1167,30 @@
 7. POST /action { proceed }            → 继续到地图
 ```
 
+### 商店（购买商品）
+
+```
+1. GET /state                          → screen=SHOP, shop.is_open=false
+2. POST /action { open_shop_inventory } → 打开库存面板
+3. GET /state                          → shop.cards[] / shop.relics[] / shop.potions[]
+4. POST /action { buy_card, option_index=0 } 或 buy_relic / buy_potion
+5. GET /state                          → 金币和库存更新
+6. POST /action { close_shop_inventory } → 关闭库存
+7. POST /action { proceed }            → 离开商店，返回地图
+```
+
+### 商店（删牌）
+
+```
+1. GET /state                          → screen=SHOP, shop.card_removal.available=true
+2. POST /action { open_shop_inventory } → 打开库存面板
+3. POST /action { remove_card_at_shop } → 进入 CARD_SELECTION
+4. GET /state                          → screen=CARD_SELECTION, selection.cards[]
+5. POST /action { select_deck_card, option_index=M } → 选择要移除的卡牌
+6. GET /state                          → 返回 SHOP 或可继续离开
+7. POST /action { proceed }            → 返回地图
+```
+
 ---
 
 ## 后续计划
@@ -1066,6 +1199,5 @@
 
 | 功能 | 对应字段 / 动作 | 计划阶段 |
 | --- | --- | --- |
-| 商店 | `shop` payload + `buy_card` / `buy_relic` / `buy_potion` / `remove_card_at_shop` | Phase 4C |
 | 游戏结束 | `game_over` payload | Phase 4C+ |
 | 药水使用 | `use_potion` | Phase 3+ |

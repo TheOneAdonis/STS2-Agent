@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Rewards;
 using STS2AIAgent.Server;
@@ -1081,7 +1082,12 @@ internal static class GameActionService
             });
         }
 
-        var eventModel = RunManager.Instance.EventSynchronizer.GetLocalEvent();
+        var eventModel = RunManager.Instance.EventSynchronizer.GetLocalEvent()
+            ?? throw new ApiException(503, "state_unavailable", "Event state is unavailable.", new
+            {
+                action = "choose_event_option",
+                screen
+            }, retryable: true);
 
         if (eventModel.IsFinished)
         {
@@ -1131,7 +1137,11 @@ internal static class GameActionService
         }
 
         RunManager.Instance.EventSynchronizer.ChooseLocalOption(request.option_index.Value);
-        var stableOption = await WaitForEventOptionTransitionAsync(eventModel, options.Count, TimeSpan.FromSeconds(10));
+        var stableOption = await WaitForEventOptionTransitionAsync(
+            eventModel.Id?.Entry,
+            BuildEventOptionSignature(eventModel),
+            options.Count,
+            TimeSpan.FromSeconds(10));
 
         return new ActionResponsePayload
         {
@@ -1168,7 +1178,10 @@ internal static class GameActionService
     /// Detects: screen change, IsFinished change, or options count change.
     /// </summary>
     private static async Task<bool> WaitForEventOptionTransitionAsync(
-        EventModel eventModel, int previousOptionCount, TimeSpan timeout)
+        string? previousEventId,
+        string previousOptionSignature,
+        int previousOptionCount,
+        TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -1183,14 +1196,28 @@ internal static class GameActionService
                 return true;
             }
 
-            // Event finished
-            if (eventModel.IsFinished)
+            var currentEventModel = RunManager.Instance.EventSynchronizer.GetLocalEvent();
+            if (currentEventModel == null)
+            {
+                continue;
+            }
+
+            if (currentEventModel.Id?.Entry != previousEventId)
             {
                 return true;
             }
 
-            // Options changed (new page of options appeared)
-            if (eventModel.CurrentOptions.Count != previousOptionCount)
+            if (currentEventModel.IsFinished)
+            {
+                return true;
+            }
+
+            if (currentEventModel.CurrentOptions.Count != previousOptionCount)
+            {
+                return true;
+            }
+
+            if (BuildEventOptionSignature(currentEventModel) != previousOptionSignature)
             {
                 return true;
             }
@@ -1245,7 +1272,9 @@ internal static class GameActionService
         // blocks until card selection completes. We must not await it, otherwise
         // the HTTP response would be stuck waiting for the AI to interact with
         // the card selection screen.
-        _ = RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(request.option_index.Value);
+        ObserveBackgroundResult(
+            RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(request.option_index.Value),
+            "choose_rest_option");
         var stable = await WaitForRestOptionTransitionAsync(TimeSpan.FromSeconds(10));
 
         return new ActionResponsePayload
@@ -1599,7 +1628,7 @@ internal static class GameActionService
 
         // Fire-and-forget: merchant card removal opens deck selection and blocks
         // until the player confirms a card. Do not await the full task here.
-        _ = entry.OnTryPurchaseWrapper(inventory);
+        ObserveBackgroundResult(entry.OnTryPurchaseWrapper(inventory), "remove_card_at_shop");
         var stable = await WaitForShopCardRemovalTransitionAsync(TimeSpan.FromSeconds(10));
 
         return new ActionResponsePayload
@@ -1731,6 +1760,35 @@ internal static class GameActionService
 
         var finalScreen = ActiveScreenContext.Instance.GetCurrentScreen();
         return finalScreen is NCardGridSelectionScreen || finalScreen is not NMerchantInventory;
+    }
+
+    private static string BuildEventOptionSignature(EventModel eventModel)
+    {
+        return string.Join(
+            "|",
+            eventModel.CurrentOptions.Select(option =>
+                $"{option.TextKey}:{option.IsLocked}:{option.IsProceed}:{option.Title?.GetFormattedText()}:{option.Description?.GetFormattedText()}"));
+    }
+
+    private static void ObserveBackgroundResult(Task<bool> task, string actionName)
+    {
+        _ = ObserveBackgroundResultCore(task, actionName);
+    }
+
+    private static async Task ObserveBackgroundResultCore(Task<bool> task, string actionName)
+    {
+        try
+        {
+            var success = await task;
+            if (!success)
+            {
+                Log.Warn($"[STS2AIAgent] Background action {actionName} returned false.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[STS2AIAgent] Background action {actionName} failed: {ex}");
+        }
     }
 
     private static async Task<bool> WaitForRelicPickTransitionAsync(TimeSpan timeout)

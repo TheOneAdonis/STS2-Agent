@@ -891,7 +891,7 @@ internal static class GameStateService
 
     private static SelectionPayload? BuildSelectionPayload(IScreenContext? currentScreen)
     {
-        if (currentScreen is not NDeckCardSelectScreen)
+        if (currentScreen is not NCardGridSelectionScreen)
         {
             return null;
         }
@@ -900,7 +900,7 @@ internal static class GameStateService
 
         return new SelectionPayload
         {
-            kind = "deck_card_select",
+            kind = currentScreen is NDeckUpgradeSelectScreen ? "deck_upgrade_select" : "deck_card_select",
             prompt = GetDeckSelectionPrompt(currentScreen) ?? string.Empty,
             cards = cards.Select((holder, index) => BuildSelectionCardPayload(holder.CardModel!, index)).ToArray()
         };
