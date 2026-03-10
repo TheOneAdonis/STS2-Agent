@@ -1,0 +1,7 @@
+{
+  "pck_name": "STS2AIAgent",
+  "name": "STS2 AI Agent",
+  "author": "chart",
+  "description": "Minimal HTTP bootstrap mod for STS2 AI Agent.",
+  "version": "0.1.0"
+}
