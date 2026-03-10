@@ -877,6 +877,8 @@
 
 ### `claim_reward`
 
+> Note (`2026-03-11`): when the claimed reward is a card reward, `skip_reward_cards` only closes the current card-selection overlay. The underlying reward may still remain in `reward.rewards[]`, so callers should always re-read state after skipping.
+
 在奖励主界面领取一个奖励。
 
 - **前提**：`screen = "REWARD"`，`reward.rewards[]` 中有 `claimable = true` 的项
@@ -909,6 +911,8 @@
 ```
 
 ### `skip_reward_cards`
+
+> Note (`2026-03-11`): this action dismisses the current card-reward selection overlay. It does not guarantee that the underlying reward is consumed. After calling it, inspect `reward.rewards[]` and `reward.can_proceed` again.
 
 在卡牌奖励子界面跳过拿牌。
 
@@ -1111,6 +1115,8 @@
 ```
 
 ### `proceed`
+
+> Note (`2026-03-11`): `proceed` can also appear on the main `REWARD` screen when the game's own proceed button is enabled. It is still not applicable while `reward.pending_card_choice = true`.
 
 点击当前界面的"继续"按钮。
 

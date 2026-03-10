@@ -1212,10 +1212,25 @@ internal static class GameActionService
             }
 
             var previewContainer = screen.GetNodeOrNull<Control>("%PreviewContainer");
-            var previewConfirm = screen.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
+            var previewConfirm = screen.GetNodeOrNull<NConfirmButton>("%PreviewConfirm")
+                ?? previewContainer?.GetNodeOrNull<NConfirmButton>("Confirm");
             if (previewContainer?.Visible == true && previewConfirm?.IsEnabled == true)
             {
                 previewConfirm.ForceClick();
+                return await WaitForDeckSelectionResolutionAsync(screen, deadline);
+            }
+
+            if (screen is NDeckTransformSelectScreen transformScreen &&
+                TryGetDeckTransformConfirmButton(transformScreen, out var transformConfirm))
+            {
+                transformConfirm!.ForceClick();
+                return await WaitForDeckSelectionResolutionAsync(screen, deadline);
+            }
+
+            if (screen is NDeckEnchantSelectScreen enchantScreen &&
+                TryGetDeckEnchantConfirmButton(enchantScreen, out var enchantConfirm))
+            {
+                enchantConfirm!.ForceClick();
                 return await WaitForDeckSelectionResolutionAsync(screen, deadline);
             }
 
@@ -1226,7 +1241,8 @@ internal static class GameActionService
                 return await WaitForDeckSelectionResolutionAsync(screen, deadline);
             }
 
-            var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
+            var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm")
+                ?? screen.GetNodeOrNull<NConfirmButton>("Confirm");
             if (confirmButton?.IsEnabled == true)
             {
                 confirmButton.ForceClick();
@@ -1248,6 +1264,43 @@ internal static class GameActionService
         }
 
         var multiPreview = screen.GetNodeOrNull<Control>("%UpgradeMultiPreviewContainer");
+        if (multiPreview?.Visible == true)
+        {
+            confirmButton = multiPreview.GetNodeOrNull<NConfirmButton>("Confirm");
+            return confirmButton?.IsEnabled == true;
+        }
+
+        confirmButton = null;
+        return false;
+    }
+
+    private static bool TryGetDeckTransformConfirmButton(
+        NDeckTransformSelectScreen screen,
+        out NConfirmButton? confirmButton)
+    {
+        var previewContainer = screen.GetNodeOrNull<Control>("%PreviewContainer");
+        if (previewContainer?.Visible == true)
+        {
+            confirmButton = previewContainer.GetNodeOrNull<NConfirmButton>("Confirm");
+            return confirmButton?.IsEnabled == true;
+        }
+
+        confirmButton = null;
+        return false;
+    }
+
+    private static bool TryGetDeckEnchantConfirmButton(
+        NDeckEnchantSelectScreen screen,
+        out NConfirmButton? confirmButton)
+    {
+        var singlePreview = screen.GetNodeOrNull<Control>("%EnchantSinglePreviewContainer");
+        if (singlePreview?.Visible == true)
+        {
+            confirmButton = singlePreview.GetNodeOrNull<NConfirmButton>("Confirm");
+            return confirmButton?.IsEnabled == true;
+        }
+
+        var multiPreview = screen.GetNodeOrNull<Control>("%EnchantMultiPreviewContainer");
         if (multiPreview?.Visible == true)
         {
             confirmButton = multiPreview.GetNodeOrNull<NConfirmButton>("Confirm");

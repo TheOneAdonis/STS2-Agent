@@ -69,6 +69,13 @@ test-debug-console-gating.ps1: disabled -> invalid_action, enabled -> completed
 
 - `collect_rewards_and_proceed` passed
 - Reward -> Map transitions remained stable after debug-fast-forwarded combats
+- Manual reward flow was revalidated on the latest build:
+  - `claim_reward` for gold updated `run.gold` correctly
+  - `claim_reward` for a card reward entered `pending_card_choice = true`
+  - `skip_reward_cards` dismissed the card-choice overlay and returned to the reward list
+  - card rewards can intentionally remain claimable after `skip_reward_cards`; this mirrors the game's native `DismissScreenAndKeepReward` behavior
+  - a protocol gap was found and fixed during this recheck: when `reward.can_proceed = true`, the MCP now also exposes `proceed` on the main reward screen
+  - `REWARD -> skip_reward_cards -> proceed -> MAP` passed on the rebuilt mod
 
 ### Shop flow
 
@@ -124,27 +131,20 @@ Result:
 - `GAME_OVER` payload was present
 - `return_to_main_menu` passed
 
-## Findings
-
-| Severity | Area | Issue | Repro |
-| --- | --- | --- | --- |
-| P2 | Start-of-run branch coverage | `deck_transform_select` / `deck_enchant_select` support was added to state recognition, but the final commit was not independently re-smoked on a dedicated transform/enchant branch after the patch landed | start a fresh run and force a transform/enchant card-selection branch |
-
 ## Conclusion
 
-- Current status: `canary / gray release candidate`
-- Not yet at "formal release complete"
+- Current status: `release candidate`
+- No known protocol-level blocker remains in the validated gameplay chain
 
 Reason:
 
-- The major gameplay chain is now largely covered and the biggest blockers found during real testing were fixed in commits `69ed5c2`, `26cd9b0`, `588d939`, and `637deaa`
-- Static checks pass and most room chains now pass in live runs
+- The major gameplay chain is now covered end-to-end, including transform / enchant / upgrade card-selection branches and the reward-screen proceed edge case
+- Static checks pass and the validated room chains now pass in live runs
 - Debug tooling is now properly gated for development-only use
 - Dynamic energy / star metadata is now more complete for agent-side decision making
-- A final clean rerun on the latest commit is still needed for the remaining start-of-run transform/enchant selection branches
+- Remaining risk is breadth rather than a known broken core flow: the game is still new, so future content patches can surface new event/card edge cases that were not part of this runbook
 
 Recommended next step:
 
-1. Re-run one fresh-run validation on the latest commit set
-2. Force a transform or enchant deck selection branch and confirm `screen="CARD_SELECTION"` plus `selection.kind`
-3. If those branches also pass, re-evaluate whether the project can move from gray release candidate to formal release
+1. Keep the current validation record as the release baseline
+2. When STS2 receives a content patch, re-run the same Phase 6 checklist and spot-check reward, event, and card-selection branches first

@@ -918,9 +918,17 @@ internal static class GameStateService
 
     public static NProceedButton? GetProceedButton(IScreenContext? currentScreen)
     {
-        if (currentScreen is null || currentScreen is NRewardsScreen || currentScreen is NCardRewardSelectionScreen)
+        if (currentScreen is null || currentScreen is NCardRewardSelectionScreen)
         {
             return null;
+        }
+
+        if (currentScreen is NRewardsScreen rewardsScreen)
+        {
+            var rewardProceedButton = GetRewardProceedButton(rewardsScreen);
+            return IsProceedButtonUsable(rewardProceedButton)
+                ? rewardProceedButton
+                : null;
         }
 
         if (currentScreen is IRoomWithProceedButton roomWithProceedButton)

@@ -19,7 +19,7 @@ Do not assume an action succeeded just because the tool returned `completed`; al
 ## Preferred Actions
 
 - Reward rooms: prefer `collect_rewards_and_proceed` unless you are making a deliberate card choice.
-- Card rewards: use `choose_reward_card` or `skip_reward_cards`, not `proceed`.
+- Card rewards: `skip_reward_cards` dismisses the card-choice overlay, but the underlying reward may still remain claimable. Re-read state after skipping.
 - Rest sites: use `choose_rest_option`; if smithing opens `CARD_SELECTION`, finish it with `select_deck_card`, then `proceed`.
 - Shops: first `open_shop_inventory`; leave the inner inventory with `close_shop_inventory`; leave the room with `proceed`.
 - Chests: `open_chest`, then `choose_treasure_relic`, then `proceed`.
@@ -29,7 +29,7 @@ Do not assume an action succeeded just because the tool returned `completed`; al
 ## Screen-Specific Rules
 
 - `COMBAT`: do not call room tools. Use `play_card`, `end_turn`, `use_potion`, `discard_potion`.
-- `REWARD`: do not call `proceed` directly unless the state explicitly exposes it after reward resolution.
+- `REWARD`: if `available_actions` includes `proceed`, it is safe to leave remaining rewards behind. If it does not, keep resolving rewards or use `collect_rewards_and_proceed`.
 - `CARD_SELECTION`: finish the selection first. Common follow-up is `select_deck_card`.
 - `MODAL`: resolve `confirm_modal` or `dismiss_modal` before anything else.
 - `EVENT`: use `choose_event_option`; if the event starts combat, expect the flow `EVENT -> COMBAT -> EVENT/MAP`.
@@ -37,7 +37,8 @@ Do not assume an action succeeded just because the tool returned `completed`; al
 
 ## Common Mistakes To Avoid
 
-- Do not use `proceed` on reward-card screens.
+- Do not use `proceed` on reward-card screens where `pending_card_choice = true`.
+- Do not assume `skip_reward_cards` consumes the card reward. Check whether the reward item is still present after the overlay closes.
 - Do not keep using old indexes after state changes; recompute from the latest payload.
 - Do not assume `selection.kind == "deck_card_select"` is the only card-selection variant. Handle upgrade/transform/enchant variants too.
 - Do not assume `shop.is_open=true` means you are done; you may still need `close_shop_inventory` before leaving.
