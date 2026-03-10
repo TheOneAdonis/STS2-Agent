@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Context;
@@ -52,15 +53,17 @@ internal static class GameStateService
             turn = combatState?.RoundNumber,
             available_actions = availableActions,
             combat = BuildCombatPayload(combatState),
-            run = BuildRunPayload(runState),
+            run = BuildRunPayload(currentScreen, combatState, runState),
             map = BuildMapPayload(currentScreen, runState),
             selection = BuildSelectionPayload(currentScreen),
+            character_select = BuildCharacterSelectPayload(currentScreen),
             chest = BuildChestPayload(currentScreen),
             @event = BuildEventPayload(currentScreen),
             shop = BuildShopPayload(currentScreen),
             rest = BuildRestPayload(currentScreen),
             reward = BuildRewardPayload(currentScreen),
-            game_over = null
+            modal = BuildModalPayload(currentScreen),
+            game_over = BuildGameOverPayload(currentScreen, runState)
         };
     }
 
@@ -70,6 +73,35 @@ internal static class GameStateService
         var combatState = CombatManager.Instance.DebugOnlyGetState();
         var runState = RunManager.Instance.DebugOnlyGetState();
         var descriptors = new List<ActionDescriptor>();
+
+        if (GetOpenModal() != null)
+        {
+            if (CanConfirmModal(currentScreen))
+            {
+                descriptors.Add(new ActionDescriptor
+                {
+                    name = "confirm_modal",
+                    requires_target = false,
+                    requires_index = false
+                });
+            }
+
+            if (CanDismissModal(currentScreen))
+            {
+                descriptors.Add(new ActionDescriptor
+                {
+                    name = "dismiss_modal",
+                    requires_target = false,
+                    requires_index = false
+                });
+            }
+
+            return new AvailableActionsPayload
+            {
+                screen = ResolveScreen(currentScreen),
+                actions = descriptors.ToArray()
+            };
+        }
 
         if (CanEndTurn(currentScreen, combatState))
         {
@@ -261,6 +293,56 @@ internal static class GameStateService
             });
         }
 
+        if (CanSelectCharacter(currentScreen))
+        {
+            descriptors.Add(new ActionDescriptor
+            {
+                name = "select_character",
+                requires_target = false,
+                requires_index = true
+            });
+        }
+
+        if (CanEmbark(currentScreen))
+        {
+            descriptors.Add(new ActionDescriptor
+            {
+                name = "embark",
+                requires_target = false,
+                requires_index = false
+            });
+        }
+
+        if (CanUsePotion(currentScreen, combatState, runState))
+        {
+            descriptors.Add(new ActionDescriptor
+            {
+                name = "use_potion",
+                requires_target = false,
+                requires_index = true
+            });
+        }
+
+        if (CanDiscardPotion(runState))
+        {
+            descriptors.Add(new ActionDescriptor
+            {
+                name = "discard_potion",
+                requires_target = false,
+                requires_index = true
+            });
+        }
+
+        if (CanReturnToMainMenu(currentScreen))
+        {
+            descriptors.Add(new ActionDescriptor
+            {
+                name = "return_to_main_menu",
+                requires_target = false,
+                requires_index = false
+            });
+        }
+
         return new AvailableActionsPayload
         {
             screen = ResolveScreen(currentScreen),
@@ -270,6 +352,11 @@ internal static class GameStateService
 
     public static string ResolveScreen(IScreenContext? currentScreen)
     {
+        if (GetOpenModal() != null)
+        {
+            return "MODAL";
+        }
+
         return currentScreen switch
         {
             NGameOverScreen => "GAME_OVER",
@@ -314,6 +401,11 @@ internal static class GameStateService
     public static Player? GetLocalPlayer(CombatState? combatState)
     {
         return LocalContext.GetMe(combatState);
+    }
+
+    public static Player? GetLocalPlayer(RunState? runState)
+    {
+        return LocalContext.GetMe(runState);
     }
 
     public static bool CanChooseMapNode(IScreenContext? currentScreen, RunState? runState)
@@ -459,6 +551,77 @@ internal static class GameStateService
         var entry = GetMerchantCardRemovalEntry(currentScreen);
         return inventoryScreen != null && inventoryScreen.IsOpen &&
             entry?.IsStocked == true && entry.EnoughGold;
+    }
+
+    public static bool CanSelectCharacter(IScreenContext? currentScreen)
+    {
+        return GetCharacterSelectButtons(currentScreen)
+            .Any(button => !button.IsLocked && button.IsEnabled && button.IsVisibleInTree());
+    }
+
+    public static bool CanEmbark(IScreenContext? currentScreen)
+    {
+        var embarkButton = GetCharacterEmbarkButton(currentScreen);
+        return embarkButton != null && embarkButton.IsEnabled && embarkButton.IsVisibleInTree();
+    }
+
+    public static bool CanUsePotion(IScreenContext? currentScreen, CombatState? combatState, RunState? runState)
+    {
+        var player = GetLocalPlayer(runState);
+        if (player == null)
+        {
+            return false;
+        }
+
+        return player.PotionSlots.Any(potion => IsPotionUsable(currentScreen, combatState, player, potion));
+    }
+
+    public static bool CanUsePotionAtIndex(IScreenContext? currentScreen, CombatState? combatState, RunState? runState, int optionIndex)
+    {
+        var player = GetLocalPlayer(runState);
+        if (player == null || optionIndex < 0 || optionIndex >= player.PotionSlots.Count)
+        {
+            return false;
+        }
+
+        return IsPotionUsable(currentScreen, combatState, player, player.PotionSlots[optionIndex]);
+    }
+
+    public static bool CanDiscardPotion(RunState? runState)
+    {
+        var player = GetLocalPlayer(runState);
+        if (player == null)
+        {
+            return false;
+        }
+
+        return player.PotionSlots.Any(potion => IsPotionDiscardable(player, potion));
+    }
+
+    public static bool CanDiscardPotionAtIndex(RunState? runState, int optionIndex)
+    {
+        var player = GetLocalPlayer(runState);
+        if (player == null || optionIndex < 0 || optionIndex >= player.PotionSlots.Count)
+        {
+            return false;
+        }
+
+        return IsPotionDiscardable(player, player.PotionSlots[optionIndex]);
+    }
+
+    public static bool CanConfirmModal(IScreenContext? currentScreen)
+    {
+        return GetModalConfirmButton(currentScreen) != null;
+    }
+
+    public static bool CanDismissModal(IScreenContext? currentScreen)
+    {
+        return GetModalCancelButton(currentScreen) != null;
+    }
+
+    public static bool CanReturnToMainMenu(IScreenContext? currentScreen)
+    {
+        return currentScreen is NGameOverScreen;
     }
 
     public static IReadOnlyList<NMapPoint> GetAvailableMapNodes(IScreenContext? currentScreen, RunState? runState)
@@ -681,6 +844,21 @@ internal static class GameStateService
     {
         var names = new List<string>();
 
+        if (GetOpenModal() != null)
+        {
+            if (CanConfirmModal(currentScreen))
+            {
+                names.Add("confirm_modal");
+            }
+
+            if (CanDismissModal(currentScreen))
+            {
+                names.Add("dismiss_modal");
+            }
+
+            return names.ToArray();
+        }
+
         if (CanEndTurn(currentScreen, combatState))
         {
             names.Add("end_turn");
@@ -776,6 +954,31 @@ internal static class GameStateService
             names.Add("remove_card_at_shop");
         }
 
+        if (CanSelectCharacter(currentScreen))
+        {
+            names.Add("select_character");
+        }
+
+        if (CanEmbark(currentScreen))
+        {
+            names.Add("embark");
+        }
+
+        if (CanUsePotion(currentScreen, combatState, runState))
+        {
+            names.Add("use_potion");
+        }
+
+        if (CanDiscardPotion(runState))
+        {
+            names.Add("discard_potion");
+        }
+
+        if (CanReturnToMainMenu(currentScreen))
+        {
+            names.Add("return_to_main_menu");
+        }
+
         return names.ToArray();
     }
 
@@ -805,7 +1008,7 @@ internal static class GameStateService
         };
     }
 
-    private static RunPayload? BuildRunPayload(RunState? runState)
+    private static RunPayload? BuildRunPayload(IScreenContext? currentScreen, CombatState? combatState, RunState? runState)
     {
         var player = LocalContext.GetMe(runState);
         if (player == null)
@@ -827,13 +1030,8 @@ internal static class GameStateService
                 name = relic.Title.GetFormattedText(),
                 is_melted = relic.IsMelted
             }).ToArray(),
-            potions = player.PotionSlots.Select((potion, index) => new RunPotionPayload
-            {
-                index = index,
-                potion_id = potion?.Id.Entry,
-                name = potion?.Title.GetFormattedText(),
-                occupied = potion != null
-            }).ToArray()
+            potions = player.PotionSlots.Select((potion, index) =>
+                BuildRunPotionPayload(currentScreen, combatState, player, potion, index)).ToArray()
         };
     }
 
@@ -904,6 +1102,60 @@ internal static class GameStateService
             prompt = GetDeckSelectionPrompt(currentScreen) ?? string.Empty,
             cards = cards.Select((holder, index) => BuildSelectionCardPayload(holder.CardModel!, index)).ToArray()
         };
+    }
+
+    private static CharacterSelectPayload? BuildCharacterSelectPayload(IScreenContext? currentScreen)
+    {
+        var screen = GetCharacterSelectScreen(currentScreen);
+        if (screen == null)
+        {
+            return null;
+        }
+
+        var buttons = GetCharacterSelectButtons(currentScreen);
+        try
+        {
+            var lobby = screen.Lobby;
+            var localPlayer = lobby.LocalPlayer;
+            var waitingPanel = screen.GetNodeOrNull<Control>("ReadyAndWaitingPanel");
+            var selectedCharacterId = localPlayer.character?.Id.Entry;
+
+            return new CharacterSelectPayload
+            {
+                selected_character_id = selectedCharacterId,
+                can_embark = CanEmbark(currentScreen),
+                local_ready = localPlayer.isReady,
+                is_waiting_for_players = waitingPanel?.Visible ?? false,
+                ascension = lobby.Ascension,
+                max_ascension = lobby.MaxAscension,
+                characters = buttons.Select((button, index) => new CharacterSelectOptionPayload
+                {
+                    index = index,
+                    character_id = button.Character.Id.Entry,
+                    name = button.Character.Title.GetFormattedText(),
+                    is_locked = button.IsLocked,
+                    is_selected = button.IsRandom
+                        ? selectedCharacterId == button.Character.Id.Entry
+                        : selectedCharacterId == button.Character.Id.Entry,
+                    is_random = button.IsRandom
+                }).ToArray()
+            };
+        }
+        catch
+        {
+            return new CharacterSelectPayload
+            {
+                characters = buttons.Select((button, index) => new CharacterSelectOptionPayload
+                {
+                    index = index,
+                    character_id = button.Character.Id.Entry,
+                    name = button.Character.Title.GetFormattedText(),
+                    is_locked = button.IsLocked,
+                    is_selected = false,
+                    is_random = button.IsRandom
+                }).ToArray()
+            };
+        }
     }
 
     private static EventPayload? BuildEventPayload(IScreenContext? currentScreen)
@@ -1131,6 +1383,53 @@ internal static class GameStateService
         return null;
     }
 
+    private static ModalPayload? BuildModalPayload(IScreenContext? currentScreen)
+    {
+        var modal = GetOpenModal();
+        if (modal is not Node modalNode)
+        {
+            return null;
+        }
+
+        var confirmButton = GetModalConfirmButton(currentScreen);
+        var cancelButton = GetModalCancelButton(currentScreen);
+
+        return new ModalPayload
+        {
+            type_name = modal.GetType().Name,
+            underlying_screen = currentScreen is Node node && ReferenceEquals(node, modalNode)
+                ? ResolveUnderlyingScreen(modalNode)
+                : null,
+            can_confirm = confirmButton != null,
+            can_dismiss = cancelButton != null,
+            confirm_label = GetButtonLabel(confirmButton),
+            dismiss_label = GetButtonLabel(cancelButton)
+        };
+    }
+
+    private static GameOverPayload? BuildGameOverPayload(IScreenContext? currentScreen, RunState? runState)
+    {
+        if (currentScreen is not NGameOverScreen screen)
+        {
+            return null;
+        }
+
+        var player = LocalContext.GetMe(runState);
+        var continueButton = screen.GetNodeOrNull<NButton>("%ContinueButton");
+        var mainMenuButton = screen.GetNodeOrNull<NButton>("%MainMenuButton");
+        var history = RunManager.Instance.History;
+
+        return new GameOverPayload
+        {
+            is_victory = history?.Win ?? (runState?.CurrentRoom?.IsVictoryRoom ?? false),
+            floor = runState?.TotalFloor,
+            character_id = player?.Character.Id.Entry,
+            can_continue = continueButton?.IsEnabled ?? false,
+            can_return_to_main_menu = true,
+            showing_summary = mainMenuButton?.Visible == true || mainMenuButton?.IsEnabled == true
+        };
+    }
+
     private static CombatHandCardPayload BuildHandCardPayload(CardModel card, int index)
     {
         card.CanPlay(out var reason, out _);
@@ -1317,6 +1616,28 @@ internal static class GameStateService
         };
     }
 
+    private static RunPotionPayload BuildRunPotionPayload(
+        IScreenContext? currentScreen,
+        CombatState? combatState,
+        Player player,
+        PotionModel? potion,
+        int index)
+    {
+        return new RunPotionPayload
+        {
+            index = index,
+            potion_id = potion?.Id.Entry,
+            name = potion?.Title.GetFormattedText(),
+            occupied = potion != null,
+            usage = potion?.Usage.ToString(),
+            target_type = potion?.TargetType.ToString(),
+            is_queued = potion?.IsQueued ?? false,
+            requires_target = potion != null && PotionRequiresTarget(potion),
+            can_use = IsPotionUsable(currentScreen, combatState, player, potion),
+            can_discard = IsPotionDiscardable(player, potion)
+        };
+    }
+
     private static ShopCardPayload BuildShopCardPayload(MerchantCardEntry entry, int index, string category)
     {
         var card = entry.CreationResult?.Card;
@@ -1437,6 +1758,52 @@ internal static class GameStateService
         };
     }
 
+    private static bool IsPotionUsable(IScreenContext? currentScreen, CombatState? combatState, Player player, PotionModel? potion)
+    {
+        if (potion == null || !IsPotionDiscardable(player, potion))
+        {
+            return false;
+        }
+
+        if (!potion.PassesCustomUsabilityCheck || !IsPotionTargetSupported(combatState, player, potion))
+        {
+            return false;
+        }
+
+        return potion.Usage switch
+        {
+            PotionUsage.AnyTime => true,
+            PotionUsage.CombatOnly => CanUseCombatActions(currentScreen, combatState, out _, out _),
+            _ => false
+        };
+    }
+
+    private static bool IsPotionDiscardable(Player player, PotionModel? potion)
+    {
+        return potion != null &&
+            !potion.IsQueued &&
+            !potion.Owner.Creature.IsDead &&
+            player.CanRemovePotions;
+    }
+
+    public static bool PotionRequiresTarget(PotionModel potion)
+    {
+        return potion.TargetType == TargetType.AnyEnemy ||
+            potion.TargetType == TargetType.AnyPlayer ||
+            potion.TargetType == TargetType.AnyAlly ||
+            potion.TargetType == TargetType.TargetedNoCreature;
+    }
+
+    private static bool IsPotionTargetSupported(CombatState? combatState, Player player, PotionModel potion)
+    {
+        return potion.TargetType switch
+        {
+            TargetType.AnyEnemy => combatState != null && combatState.Enemies.Any(enemy => enemy.IsAlive),
+            TargetType.TargetedNoCreature => false,
+            _ => true
+        };
+    }
+
     private static NMerchantRoom? GetMerchantRoom(IScreenContext? currentScreen)
     {
         return currentScreen switch
@@ -1486,6 +1853,115 @@ internal static class GameStateService
     public static MerchantCardRemovalEntry? GetMerchantCardRemovalEntry(IScreenContext? currentScreen)
     {
         return GetMerchantInventory(currentScreen)?.CardRemovalEntry;
+    }
+
+    public static NCharacterSelectScreen? GetCharacterSelectScreen(IScreenContext? currentScreen)
+    {
+        return currentScreen as NCharacterSelectScreen;
+    }
+
+    public static IReadOnlyList<NCharacterSelectButton> GetCharacterSelectButtons(IScreenContext? currentScreen)
+    {
+        var screen = GetCharacterSelectScreen(currentScreen);
+        if (screen == null)
+        {
+            return Array.Empty<NCharacterSelectButton>();
+        }
+
+        return FindDescendants<NCharacterSelectButton>(screen)
+            .Where(node => GodotObject.IsInstanceValid(node))
+            .OrderBy(node => node.GlobalPosition.Y)
+            .ThenBy(node => node.GlobalPosition.X)
+            .ToArray();
+    }
+
+    public static NConfirmButton? GetCharacterEmbarkButton(IScreenContext? currentScreen)
+    {
+        return GetCharacterSelectScreen(currentScreen)?.GetNodeOrNull<NConfirmButton>("ConfirmButton");
+    }
+
+    public static IScreenContext? GetOpenModal()
+    {
+        return NModalContainer.Instance?.OpenModal;
+    }
+
+    public static NButton? GetModalConfirmButton(IScreenContext? currentScreen)
+    {
+        return FindModalButton("VerticalPopup/YesButton", "ConfirmButton", "%ConfirmButton", "%Confirm", "%AcknowledgeButton");
+    }
+
+    public static NButton? GetModalCancelButton(IScreenContext? currentScreen)
+    {
+        return FindModalButton("VerticalPopup/NoButton", "CancelButton", "%CancelButton", "%BackButton");
+    }
+
+    private static NButton? FindModalButton(params string[] paths)
+    {
+        var modal = GetOpenModal();
+        if (modal is not Node modalNode)
+        {
+            return null;
+        }
+
+        foreach (var path in paths)
+        {
+            var button = modalNode.GetNodeOrNull<NButton>(path);
+            if (button != null && GodotObject.IsInstanceValid(button) && button.IsEnabled && button.IsVisibleInTree())
+            {
+                return button;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ResolveUnderlyingScreen(Node modalNode)
+    {
+        var parent = modalNode.GetParent();
+        while (parent != null)
+        {
+            if (parent is IScreenContext screenContext && !ReferenceEquals(parent, modalNode))
+            {
+                return ResolveNonModalScreen(screenContext);
+            }
+
+            parent = parent.GetParent();
+        }
+
+        return null;
+    }
+
+    private static string ResolveNonModalScreen(IScreenContext? currentScreen)
+    {
+        return currentScreen switch
+        {
+            NGameOverScreen => "GAME_OVER",
+            NCardRewardSelectionScreen => "REWARD",
+            NDeckCardSelectScreen or NDeckUpgradeSelectScreen => "CARD_SELECTION",
+            NRewardsScreen => "REWARD",
+            NTreasureRoom or NTreasureRoomRelicCollection => "CHEST",
+            NRestSiteRoom => "REST",
+            NMerchantRoom or NMerchantInventory => "SHOP",
+            NEventRoom => "EVENT",
+            NCombatRoom => "COMBAT",
+            NMapScreen or NMapRoom => "MAP",
+            NCharacterSelectScreen => "CHARACTER_SELECT",
+            NPatchNotesScreen => "MAIN_MENU",
+            NSubmenu => "MAIN_MENU",
+            NLogoAnimation => "MAIN_MENU",
+            NMainMenu => "MAIN_MENU",
+            _ => "UNKNOWN"
+        };
+    }
+
+    private static string? GetButtonLabel(NButton? button)
+    {
+        if (button == null)
+        {
+            return null;
+        }
+
+        return button.GetNodeOrNull<MegaLabel>("Label")?.Text ?? button.Name.ToString();
     }
 
     private static bool TryGetMapScreen(IScreenContext? currentScreen, RunState? runState, out NMapScreen? mapScreen)
@@ -1552,6 +2028,8 @@ internal sealed class GameStatePayload
 
     public SelectionPayload? selection { get; init; }
 
+    public CharacterSelectPayload? character_select { get; init; }
+
     public ChestPayload? chest { get; init; }
 
     public EventPayload? @event { get; init; }
@@ -1562,7 +2040,9 @@ internal sealed class GameStatePayload
 
     public RewardPayload? reward { get; init; }
 
-    public object? game_over { get; init; }
+    public ModalPayload? modal { get; init; }
+
+    public GameOverPayload? game_over { get; init; }
 }
 
 internal sealed class AvailableActionsPayload
@@ -1630,6 +2110,38 @@ internal sealed class SelectionPayload
     public string prompt { get; init; } = string.Empty;
 
     public SelectionCardPayload[] cards { get; init; } = Array.Empty<SelectionCardPayload>();
+}
+
+internal sealed class CharacterSelectPayload
+{
+    public string? selected_character_id { get; init; }
+
+    public bool can_embark { get; init; }
+
+    public bool local_ready { get; init; }
+
+    public bool is_waiting_for_players { get; init; }
+
+    public int ascension { get; init; }
+
+    public int max_ascension { get; init; }
+
+    public CharacterSelectOptionPayload[] characters { get; init; } = Array.Empty<CharacterSelectOptionPayload>();
+}
+
+internal sealed class CharacterSelectOptionPayload
+{
+    public int index { get; init; }
+
+    public string character_id { get; init; } = string.Empty;
+
+    public string name { get; init; } = string.Empty;
+
+    public bool is_locked { get; init; }
+
+    public bool is_selected { get; init; }
+
+    public bool is_random { get; init; }
 }
 
 internal sealed class ChestPayload
@@ -1910,6 +2422,36 @@ internal sealed class RewardPayload
     public RewardAlternativePayload[] alternatives { get; init; } = Array.Empty<RewardAlternativePayload>();
 }
 
+internal sealed class ModalPayload
+{
+    public string type_name { get; init; } = string.Empty;
+
+    public string? underlying_screen { get; init; }
+
+    public bool can_confirm { get; init; }
+
+    public bool can_dismiss { get; init; }
+
+    public string? confirm_label { get; init; }
+
+    public string? dismiss_label { get; init; }
+}
+
+internal sealed class GameOverPayload
+{
+    public bool is_victory { get; init; }
+
+    public int? floor { get; init; }
+
+    public string? character_id { get; init; }
+
+    public bool can_continue { get; init; }
+
+    public bool can_return_to_main_menu { get; init; }
+
+    public bool showing_summary { get; init; }
+}
+
 internal sealed class RewardOptionPayload
 {
     public int index { get; init; }
@@ -1993,6 +2535,18 @@ internal sealed class RunPotionPayload
     public string? name { get; init; }
 
     public bool occupied { get; init; }
+
+    public string? usage { get; init; }
+
+    public string? target_type { get; init; }
+
+    public bool is_queued { get; init; }
+
+    public bool requires_target { get; init; }
+
+    public bool can_use { get; init; }
+
+    public bool can_discard { get; init; }
 }
 
 internal sealed class ActionDescriptor

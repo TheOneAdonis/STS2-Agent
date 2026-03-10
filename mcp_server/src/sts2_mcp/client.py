@@ -243,6 +243,73 @@ class Sts2Client:
             },
         )
 
+    def select_character(self, option_index: int) -> dict[str, Any]:
+        return self.execute_action(
+            "select_character",
+            option_index=option_index,
+            client_context={
+                "source": "mcp",
+                "tool_name": "select_character",
+            },
+        )
+
+    def embark(self) -> dict[str, Any]:
+        return self.execute_action(
+            "embark",
+            client_context={
+                "source": "mcp",
+                "tool_name": "embark",
+            },
+        )
+
+    def use_potion(self, option_index: int, target_index: int | None = None) -> dict[str, Any]:
+        return self.execute_action(
+            "use_potion",
+            option_index=option_index,
+            target_index=target_index,
+            client_context={
+                "source": "mcp",
+                "tool_name": "use_potion",
+            },
+        )
+
+    def discard_potion(self, option_index: int) -> dict[str, Any]:
+        return self.execute_action(
+            "discard_potion",
+            option_index=option_index,
+            client_context={
+                "source": "mcp",
+                "tool_name": "discard_potion",
+            },
+        )
+
+    def confirm_modal(self) -> dict[str, Any]:
+        return self.execute_action(
+            "confirm_modal",
+            client_context={
+                "source": "mcp",
+                "tool_name": "confirm_modal",
+            },
+        )
+
+    def dismiss_modal(self) -> dict[str, Any]:
+        return self.execute_action(
+            "dismiss_modal",
+            client_context={
+                "source": "mcp",
+                "tool_name": "dismiss_modal",
+            },
+        )
+
+    def return_to_main_menu(self) -> dict[str, Any]:
+        return self.execute_action(
+            "return_to_main_menu",
+            client_context={
+                "source": "mcp",
+                "tool_name": "return_to_main_menu",
+            },
+        )
+
     def execute_action(
         self,
         action: str,

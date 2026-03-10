@@ -70,7 +70,8 @@
 | `REWARD` | 奖励结算 / 卡牌奖励选择 |
 | `CHEST` | 宝箱房 |
 | `CARD_SELECTION` | 牌库选牌界面（删牌等） |
-| `GAME_OVER` | 游戏结束（暂未实现状态提取） |
+| `MODAL` | 阻塞中的弹窗 / FTUE |
+| `GAME_OVER` | 游戏结束 |
 | `UNKNOWN` | 无法识别的界面 |
 
 ## Action Status
@@ -129,7 +130,9 @@
 | `event` | object \| null | 事件状态（仅事件房存在） |
 | `shop` | object \| null | 商店状态（仅商店房存在） |
 | `rest` | object \| null | 休息点状态（仅休息点存在） |
-| `game_over` | null | 游戏结束状态（暂未实现） |
+| `character_select` | object \| null | 角色选择状态（仅角色选择界面存在） |
+| `modal` | object \| null | 阻塞弹窗状态（仅 MODAL 界面存在） |
+| `game_over` | object \| null | 游戏结束状态（仅 GAME_OVER 界面存在） |
 
 ### `combat` 子结构
 
@@ -215,6 +218,12 @@
 | `potion_id` | string \| null | 药水 ID（空槽为 null） |
 | `name` | string \| null | 药水名称（空槽为 null） |
 | `occupied` | boolean | 是否有药水 |
+| `usage` | string \| null | 药水使用时机（如 `CombatOnly`, `AnyTime`） |
+| `target_type` | string \| null | 药水目标类型 |
+| `is_queued` | boolean | 是否已入队等待生效 |
+| `requires_target` | boolean | 是否需要额外目标 |
+| `can_use` | boolean | 当前是否可手动使用 |
+| `can_discard` | boolean | 当前是否可丢弃 |
 
 ### `map` 子结构
 
@@ -510,10 +519,12 @@
     },
     "map": null,
     "selection": null,
+    "character_select": null,
     "event": null,
     "shop": null,
     "rest": null,
     "reward": null,
+    "modal": null,
     "game_over": null
   }
 }
@@ -1193,11 +1204,15 @@
 
 ---
 
-## 后续计划
+## 补充说明
 
-以下状态和动作尚未实现，将在后续 Phase 中补充：
+截至 `2026-03-11`，此前列为后续计划的以下能力都已经落地到代码与 MCP：
 
-| 功能 | 对应字段 / 动作 | 计划阶段 |
+| 功能 | 对应字段 / 动作 | 当前状态 |
 | --- | --- | --- |
-| 游戏结束 | `game_over` payload | Phase 4C+ |
-| 药水使用 | `use_potion` | Phase 3+ |
+| 角色选择 | `character_select` / `select_character` / `embark` | 已实现，待实机验证 |
+| 药水系统 | `run.potions[*].can_use` / `use_potion` / `discard_potion` | 已实现，待实机验证 |
+| 阻塞弹窗 | `modal` / `confirm_modal` / `dismiss_modal` | 已实现，待实机验证 |
+| 游戏结束 | `game_over` / `return_to_main_menu` | 已实现，待实机验证 |
+
+新增字段与动作的详细说明见 [phase-5-full-chain.md](/C:/Users/chart/Documents/project/sp/docs/phase-5-full-chain.md)。

@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Nodes;
@@ -13,6 +14,8 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
@@ -57,6 +60,13 @@ internal static class GameActionService
             "buy_relic" => ExecuteBuyRelicAsync(request),
             "buy_potion" => ExecuteBuyPotionAsync(request),
             "remove_card_at_shop" => ExecuteRemoveCardAtShopAsync(),
+            "select_character" => ExecuteSelectCharacterAsync(request),
+            "embark" => ExecuteEmbarkAsync(),
+            "use_potion" => ExecuteUsePotionAsync(request),
+            "discard_potion" => ExecuteDiscardPotionAsync(request),
+            "confirm_modal" => ExecuteConfirmModalAsync(),
+            "dismiss_modal" => ExecuteDismissModalAsync(),
+            "return_to_main_menu" => ExecuteReturnToMainMenuAsync(),
             _ => throw new ApiException(409, "invalid_action", "Action is not supported yet.", new
             {
                 action = request.action
@@ -1641,6 +1651,269 @@ internal static class GameActionService
         };
     }
 
+    private static async Task<ActionResponsePayload> ExecuteSelectCharacterAsync(ActionRequest request)
+    {
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+
+        if (currentScreen is not NCharacterSelectScreen characterSelectScreen || !GameStateService.CanSelectCharacter(currentScreen))
+        {
+            throw new ApiException(409, "invalid_action", "Action is not available in the current state.", new
+            {
+                action = "select_character",
+                screen
+            });
+        }
+
+        if (request.option_index == null)
+        {
+            throw new ApiException(400, "invalid_request", "select_character requires option_index.", new
+            {
+                action = "select_character"
+            });
+        }
+
+        var buttons = GameStateService.GetCharacterSelectButtons(currentScreen);
+        if (request.option_index < 0 || request.option_index >= buttons.Count)
+        {
+            throw new ApiException(409, "invalid_target", "option_index is out of range.", new
+            {
+                action = "select_character",
+                option_index = request.option_index,
+                option_count = buttons.Count
+            });
+        }
+
+        var button = buttons[request.option_index.Value];
+        if (button.IsLocked)
+        {
+            throw new ApiException(409, "invalid_target", "The selected character is locked.", new
+            {
+                action = "select_character",
+                option_index = request.option_index,
+                character_id = button.Character.Id.Entry
+            });
+        }
+
+        if (!button.IsEnabled || !button.IsVisibleInTree())
+        {
+            throw new ApiException(409, "invalid_target", "The selected character cannot be chosen right now.", new
+            {
+                action = "select_character",
+                option_index = request.option_index,
+                character_id = button.Character.Id.Entry
+            });
+        }
+
+        var previousCharacterId = characterSelectScreen.Lobby.LocalPlayer.character.Id.Entry;
+        button.Select();
+        var stable = await WaitForCharacterSelectionTransitionAsync(characterSelectScreen, button.Character.Id.Entry, previousCharacterId, TimeSpan.FromSeconds(5));
+
+        return new ActionResponsePayload
+        {
+            action = "select_character",
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteEmbarkAsync()
+    {
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+
+        if (!GameStateService.CanEmbark(currentScreen) || currentScreen is not NCharacterSelectScreen characterSelectScreen)
+        {
+            throw new ApiException(409, "invalid_action", "Action is not available in the current state.", new
+            {
+                action = "embark",
+                screen
+            });
+        }
+
+        var embarkButton = GameStateService.GetCharacterEmbarkButton(currentScreen)
+            ?? throw new ApiException(503, "state_unavailable", "Embark button is unavailable.", new
+            {
+                action = "embark",
+                screen
+            }, retryable: true);
+
+        embarkButton.ForceClick();
+        var stable = await WaitForEmbarkTransitionAsync(characterSelectScreen, TimeSpan.FromSeconds(10));
+
+        return new ActionResponsePayload
+        {
+            action = "embark",
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteUsePotionAsync(ActionRequest request)
+    {
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var combatState = CombatManager.Instance.DebugOnlyGetState();
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+
+        if (request.option_index == null)
+        {
+            throw new ApiException(400, "invalid_request", "use_potion requires option_index.", new
+            {
+                action = "use_potion"
+            });
+        }
+
+        if (!GameStateService.CanUsePotionAtIndex(currentScreen, combatState, runState, request.option_index.Value))
+        {
+            throw new ApiException(409, "invalid_action", "The selected potion cannot be used in the current state.", new
+            {
+                action = "use_potion",
+                screen,
+                option_index = request.option_index
+            });
+        }
+
+        var player = GameStateService.GetLocalPlayer(runState)
+            ?? throw new ApiException(503, "state_unavailable", "Local player is unavailable.", new
+            {
+                action = "use_potion",
+                screen
+            }, retryable: true);
+
+        if (request.option_index < 0 || request.option_index >= player.PotionSlots.Count)
+        {
+            throw new ApiException(409, "invalid_target", "option_index is out of range.", new
+            {
+                action = "use_potion",
+                option_index = request.option_index,
+                option_count = player.PotionSlots.Count
+            });
+        }
+
+        var potion = player.PotionSlots[request.option_index.Value]
+            ?? throw new ApiException(409, "invalid_target", "The selected potion slot is empty.", new
+            {
+                action = "use_potion",
+                option_index = request.option_index
+            });
+
+        var target = ResolvePotionTarget(request, combatState, potion);
+        potion.EnqueueManualUse(target);
+        var stable = await WaitForPotionUseTransitionAsync(player, request.option_index.Value, potion, TimeSpan.FromSeconds(10));
+
+        return new ActionResponsePayload
+        {
+            action = "use_potion",
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteDiscardPotionAsync(ActionRequest request)
+    {
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+
+        if (request.option_index == null)
+        {
+            throw new ApiException(400, "invalid_request", "discard_potion requires option_index.", new
+            {
+                action = "discard_potion"
+            });
+        }
+
+        if (!GameStateService.CanDiscardPotionAtIndex(runState, request.option_index.Value))
+        {
+            throw new ApiException(409, "invalid_action", "The selected potion cannot be discarded in the current state.", new
+            {
+                action = "discard_potion",
+                screen,
+                option_index = request.option_index
+            });
+        }
+
+        var player = GameStateService.GetLocalPlayer(runState)
+            ?? throw new ApiException(503, "state_unavailable", "Local player is unavailable.", new
+            {
+                action = "discard_potion",
+                screen
+            }, retryable: true);
+
+        if (request.option_index < 0 || request.option_index >= player.PotionSlots.Count)
+        {
+            throw new ApiException(409, "invalid_target", "option_index is out of range.", new
+            {
+                action = "discard_potion",
+                option_index = request.option_index,
+                option_count = player.PotionSlots.Count
+            });
+        }
+
+        var potion = player.PotionSlots[request.option_index.Value]
+            ?? throw new ApiException(409, "invalid_target", "The selected potion slot is empty.", new
+            {
+                action = "discard_potion",
+                option_index = request.option_index
+            });
+
+        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new DiscardPotionGameAction(player, (uint)request.option_index.Value));
+        var stable = await WaitForPotionDiscardTransitionAsync(player, request.option_index.Value, potion, TimeSpan.FromSeconds(10));
+
+        return new ActionResponsePayload
+        {
+            action = "discard_potion",
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteConfirmModalAsync()
+    {
+        return await ExecuteModalButtonAsync("confirm_modal", GameStateService.GetModalConfirmButton);
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteDismissModalAsync()
+    {
+        return await ExecuteModalButtonAsync("dismiss_modal", GameStateService.GetModalCancelButton);
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteReturnToMainMenuAsync()
+    {
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+
+        if (currentScreen is not NGameOverScreen gameOverScreen || !GameStateService.CanReturnToMainMenu(currentScreen))
+        {
+            throw new ApiException(409, "invalid_action", "Action is not available in the current state.", new
+            {
+                action = "return_to_main_menu",
+                screen
+            });
+        }
+
+        gameOverScreen.Call(NGameOverScreen.MethodName.ReturnToMainMenu);
+        var stable = await WaitForGameOverExitAsync(TimeSpan.FromSeconds(15));
+
+        return new ActionResponsePayload
+        {
+            action = "return_to_main_menu",
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
     private static async Task<bool> WaitForShopInventoryOpenAsync(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -1760,6 +2033,230 @@ internal static class GameActionService
 
         var finalScreen = ActiveScreenContext.Instance.GetCurrentScreen();
         return finalScreen is NCardGridSelectionScreen || finalScreen is not NMerchantInventory;
+    }
+
+    private static Creature? ResolvePotionTarget(ActionRequest request, CombatState? combatState, PotionModel potion)
+    {
+        return potion.TargetType switch
+        {
+            TargetType.AnyEnemy => ResolvePotionEnemyTarget(request, combatState, potion),
+            TargetType.TargetedNoCreature => throw new ApiException(409, "invalid_action", "This potion target type is not supported yet.", new
+            {
+                action = "use_potion",
+                potion_id = potion.Id.Entry,
+                target_type = potion.TargetType.ToString()
+            }),
+            _ => potion.Owner.Creature
+        };
+    }
+
+    private static Creature ResolvePotionEnemyTarget(ActionRequest request, CombatState? combatState, PotionModel potion)
+    {
+        if (combatState == null)
+        {
+            throw new ApiException(503, "state_unavailable", "Combat state is unavailable.", new
+            {
+                action = "use_potion",
+                potion_id = potion.Id.Entry
+            }, retryable: true);
+        }
+
+        if (request.target_index == null)
+        {
+            throw new ApiException(409, "invalid_target", "This potion requires target_index.", new
+            {
+                action = "use_potion",
+                potion_id = potion.Id.Entry,
+                target_type = potion.TargetType.ToString()
+            });
+        }
+
+        var enemy = GameStateService.ResolveEnemyTarget(combatState, request.target_index.Value);
+        if (enemy == null)
+        {
+            throw new ApiException(409, "invalid_target", "target_index is out of range.", new
+            {
+                action = "use_potion",
+                potion_id = potion.Id.Entry,
+                target_index = request.target_index
+            });
+        }
+
+        return enemy;
+    }
+
+    private static async Task<bool> WaitForCharacterSelectionTransitionAsync(
+        NCharacterSelectScreen screen,
+        string currentCharacterId,
+        string previousCharacterId,
+        TimeSpan timeout)
+    {
+        if (currentCharacterId == previousCharacterId)
+        {
+            return true;
+        }
+
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            if (!GodotObject.IsInstanceValid(screen))
+            {
+                return true;
+            }
+
+            if (screen.Lobby.LocalPlayer.character.Id.Entry == currentCharacterId)
+            {
+                return true;
+            }
+        }
+
+        return screen.Lobby.LocalPlayer.character.Id.Entry == currentCharacterId;
+    }
+
+    private static async Task<bool> WaitForEmbarkTransitionAsync(NCharacterSelectScreen screen, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            if (GameStateService.GetOpenModal() != null)
+            {
+                return true;
+            }
+
+            var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+            if (!ReferenceEquals(currentScreen, screen))
+            {
+                return true;
+            }
+
+            if (screen.Lobby.LocalPlayer.isReady)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> WaitForPotionUseTransitionAsync(Player player, int potionIndex, PotionModel potion, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            if (potion.HasBeenRemovedFromState || potion.IsQueued)
+            {
+                return true;
+            }
+
+            if (potionIndex >= player.PotionSlots.Count)
+            {
+                return true;
+            }
+
+            if (!ReferenceEquals(player.PotionSlots[potionIndex], potion))
+            {
+                return true;
+            }
+        }
+
+        return potion.HasBeenRemovedFromState || potion.IsQueued || !ReferenceEquals(player.PotionSlots[potionIndex], potion);
+    }
+
+    private static async Task<bool> WaitForPotionDiscardTransitionAsync(Player player, int potionIndex, PotionModel potion, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            if (potion.HasBeenRemovedFromState)
+            {
+                return true;
+            }
+
+            if (potionIndex >= player.PotionSlots.Count)
+            {
+                return true;
+            }
+
+            if (!ReferenceEquals(player.PotionSlots[potionIndex], potion))
+            {
+                return true;
+            }
+        }
+
+        return potion.HasBeenRemovedFromState || !ReferenceEquals(player.PotionSlots[potionIndex], potion);
+    }
+
+    private static async Task<ActionResponsePayload> ExecuteModalButtonAsync(
+        string actionName,
+        Func<IScreenContext?, NButton?> buttonResolver)
+    {
+        var currentScreen = ActiveScreenContext.Instance.GetCurrentScreen();
+        var screen = GameStateService.ResolveScreen(currentScreen);
+        var previousModal = GameStateService.GetOpenModal();
+        var button = buttonResolver(currentScreen);
+
+        if (previousModal == null || button == null)
+        {
+            throw new ApiException(409, "invalid_action", "Action is not available in the current state.", new
+            {
+                action = actionName,
+                screen
+            });
+        }
+
+        button.ForceClick();
+        var stable = await WaitForModalTransitionAsync(previousModal, TimeSpan.FromSeconds(10));
+
+        return new ActionResponsePayload
+        {
+            action = actionName,
+            status = stable ? "completed" : "pending",
+            stable = stable,
+            message = stable ? "Action completed." : "Action queued but state is still transitioning.",
+            state = GameStateService.BuildStatePayload()
+        };
+    }
+
+    private static async Task<bool> WaitForModalTransitionAsync(IScreenContext previousModal, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            var currentModal = GameStateService.GetOpenModal();
+            if (currentModal == null || !ReferenceEquals(currentModal, previousModal))
+            {
+                return true;
+            }
+        }
+
+        var finalModal = GameStateService.GetOpenModal();
+        return finalModal == null || !ReferenceEquals(finalModal, previousModal);
+    }
+
+    private static async Task<bool> WaitForGameOverExitAsync(TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            await WaitForNextFrameAsync();
+
+            if (ActiveScreenContext.Instance.GetCurrentScreen() is not NGameOverScreen)
+            {
+                return true;
+            }
+        }
+
+        return ActiveScreenContext.Instance.GetCurrentScreen() is not NGameOverScreen;
     }
 
     private static string BuildEventOptionSignature(EventModel eventModel)

@@ -455,6 +455,90 @@ def create_server(client: Sts2Client | None = None) -> FastMCP:
         return sts2.remove_card_at_shop()
 
     @mcp.tool
+    def select_character(option_index: int) -> dict[str, Any]:
+        """Pick a character on the character select screen.
+
+        Args:
+            option_index: zero-based index into character_select.characters[].
+
+        Preconditions:
+            - screen is CHARACTER_SELECT.
+            - available_actions includes "select_character".
+        """
+        return sts2.select_character(option_index=option_index)
+
+    @mcp.tool
+    def embark() -> dict[str, Any]:
+        """Start the run from character select.
+
+        Preconditions:
+            - screen is CHARACTER_SELECT.
+            - available_actions includes "embark".
+            - character_select.can_embark is true.
+
+        This may transition directly into the run or open a modal / FTUE first.
+        """
+        return sts2.embark()
+
+    @mcp.tool
+    def use_potion(option_index: int, target_index: int | None = None) -> dict[str, Any]:
+        """Use a potion from the player's belt.
+
+        Args:
+            option_index: zero-based index into run.potions[].
+            target_index: zero-based index into combat.enemies[] when the
+                          selected potion needs an enemy target.
+
+        Preconditions:
+            - available_actions includes "use_potion".
+            - run.potions[option_index].can_use is true.
+        """
+        return sts2.use_potion(option_index=option_index, target_index=target_index)
+
+    @mcp.tool
+    def discard_potion(option_index: int) -> dict[str, Any]:
+        """Discard a potion from the player's belt.
+
+        Args:
+            option_index: zero-based index into run.potions[].
+
+        Preconditions:
+            - available_actions includes "discard_potion".
+            - run.potions[option_index].can_discard is true.
+        """
+        return sts2.discard_potion(option_index=option_index)
+
+    @mcp.tool
+    def confirm_modal() -> dict[str, Any]:
+        """Confirm the currently open modal / FTUE prompt.
+
+        Preconditions:
+            - screen is MODAL.
+            - available_actions includes "confirm_modal".
+        """
+        return sts2.confirm_modal()
+
+    @mcp.tool
+    def dismiss_modal() -> dict[str, Any]:
+        """Dismiss or cancel the currently open modal / FTUE prompt.
+
+        Preconditions:
+            - screen is MODAL.
+            - available_actions includes "dismiss_modal".
+        """
+        return sts2.dismiss_modal()
+
+    @mcp.tool
+    def return_to_main_menu() -> dict[str, Any]:
+        """Leave the game over screen and return to the main menu.
+
+        Preconditions:
+            - screen is GAME_OVER.
+            - available_actions includes "return_to_main_menu".
+        """
+        return sts2.return_to_main_menu()
+
+    @mcp.tool
     def proceed() -> dict[str, Any]:
         """Click the "Proceed" / "Continue" button on the current screen.
 
