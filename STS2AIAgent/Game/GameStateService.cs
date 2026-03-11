@@ -2442,6 +2442,13 @@ internal static class GameStateService
 
     private static string ResolveNonModalScreen(IScreenContext? currentScreen)
     {
+        if (currentScreen != null &&
+            TryGetCombatHandSelection(currentScreen, out var hand) &&
+            SupportsSingleCardCombatHandSelection(hand!))
+        {
+            return "CARD_SELECTION";
+        }
+
         return currentScreen switch
         {
             NGameOverScreen => "GAME_OVER",

@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.DevConsole;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Debug;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -1052,13 +1053,36 @@ internal static class GameActionService
             });
         }
 
+        var isCombatHandSelection = GameStateService.TryGetCombatHandSelection(currentScreen, out var combatHand);
         var selected = options[request.option_index.Value];
-        selected.EmitSignal(NCardHolder.SignalName.Pressed, selected);
+        if (isCombatHandSelection)
+        {
+            if (selected is not NHandCardHolder handHolder)
+            {
+                throw new ApiException(503, "state_unavailable", "Combat hand selection holder is unavailable.", new
+                {
+                    action = "select_deck_card",
+                    screen
+                }, retryable: true);
+            }
+
+            combatHand!.Call(
+                combatHand.CurrentMode == NPlayerHand.Mode.UpgradeSelect
+                    ? NPlayerHand.MethodName.SelectCardInUpgradeMode
+                    : NPlayerHand.MethodName.SelectCardInSimpleMode,
+                handHolder);
+            combatHand.Call(NPlayerHand.MethodName.CheckIfSelectionComplete);
+        }
+        else
+        {
+            selected.EmitSignal(NCardHolder.SignalName.Pressed, selected);
+        }
+
         var stable = currentScreen switch
         {
             NCardGridSelectionScreen cardSelectScreen => await ConfirmDeckSelectionAsync(cardSelectScreen, TimeSpan.FromSeconds(10)),
             NChooseACardSelectionScreen chooseCardScreen => await WaitForChooseCardSelectionResolutionAsync(chooseCardScreen, TimeSpan.FromSeconds(10)),
-            _ when GameStateService.TryGetCombatHandSelection(currentScreen, out _) => await WaitForCombatHandSelectionResolutionAsync(TimeSpan.FromSeconds(10)),
+            _ when isCombatHandSelection => await WaitForCombatHandSelectionResolutionAsync(TimeSpan.FromSeconds(10)),
             _ => false
         };
 
@@ -1765,7 +1789,7 @@ internal static class GameActionService
 
     /// <summary>
     /// Waits for rest site state to change after choosing an option.
-    /// Detects: screen change (SMITH → card selection), ProceedButton appearance
+    /// Detects: screen change (SMITH 闂?card selection), ProceedButton appearance
     /// (HEAL), or options list change.
     /// </summary>
     private static async Task<bool> WaitForRestOptionTransitionAsync(TimeSpan timeout)
@@ -3174,7 +3198,7 @@ internal static class GameActionService
     /// Waits for the next game frame via Godot's ProcessFrame signal.
     /// When NGame or SceneTree is unavailable (e.g. during shutdown),
     /// falls back to Task.Delay WITHOUT ConfigureAwait(false) to preserve
-    /// the game thread's SynchronizationContext. This is critical — using
+    /// the game thread's SynchronizationContext. This is critical 闂?using
     /// ConfigureAwait(false) would cause subsequent loop iterations to run
     /// on a thread-pool thread, breaking Godot object access safety.
     /// </summary>
