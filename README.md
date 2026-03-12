@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/89353468-a299-4315-9516-e520bcbfbd4b
+
 # STS2 AI Agent
 
 `STS2 AI Agent` 由两部分组成：
