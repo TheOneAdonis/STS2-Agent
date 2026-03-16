@@ -59,6 +59,7 @@ internal static class GameStateService
         var combatState = CombatManager.Instance.DebugOnlyGetState();
         var runState = RunManager.Instance.DebugOnlyGetState();
         var screen = ResolveScreen(currentScreen);
+        var combatAutomation = BuildCombatAutomationState(currentScreen, combatState);
         var session = BuildSessionPayload(currentScreen, runState);
         var availableActions = BuildAvailableActionNames(currentScreen, combatState, runState);
         var combat = BuildCombatPayload(combatState);
@@ -84,6 +85,9 @@ internal static class GameStateService
             screen = screen,
             session = session,
             in_combat = CombatManager.Instance.IsInProgress,
+            combat_turn_state = combatAutomation.turn_state,
+            combat_actions_ready = combatAutomation.actions_ready,
+            combat_transitioning = combatAutomation.transitioning,
             turn = combatState?.RoundNumber,
             available_actions = availableActions,
             combat = combat,
@@ -1573,6 +1577,68 @@ internal static class GameStateService
         return true;
     }
 
+    private static CombatAutomationState BuildCombatAutomationState(IScreenContext? currentScreen, CombatState? combatState)
+    {
+        if (!CombatManager.Instance.IsInProgress || combatState == null || currentScreen is not NCombatRoom room)
+        {
+            return new CombatAutomationState("out_of_combat", actions_ready: false, transitioning: false);
+        }
+
+        if (CombatManager.Instance.IsOverOrEnding)
+        {
+            return new CombatAutomationState("combat_ending", actions_ready: false, transitioning: true);
+        }
+
+        if (combatState.CurrentSide != CombatSide.Player)
+        {
+            return new CombatAutomationState("enemy_turn", actions_ready: false, transitioning: true);
+        }
+
+        if (!CombatManager.Instance.IsPlayPhase)
+        {
+            return new CombatAutomationState("turn_transition", actions_ready: false, transitioning: true);
+        }
+
+        if (CombatManager.Instance.PlayerActionsDisabled)
+        {
+            return new CombatAutomationState("player_actions_disabled", actions_ready: false, transitioning: true);
+        }
+
+        if (room.Mode != CombatRoomMode.ActiveCombat)
+        {
+            return new CombatAutomationState("room_transition", actions_ready: false, transitioning: true);
+        }
+
+        var hand = room.Ui?.Hand;
+        if (hand == null)
+        {
+            return new CombatAutomationState("ui_not_ready", actions_ready: false, transitioning: true);
+        }
+
+        if (hand.InCardPlay)
+        {
+            return new CombatAutomationState("card_animation", actions_ready: false, transitioning: true);
+        }
+
+        if (hand.IsInCardSelection)
+        {
+            return new CombatAutomationState("card_selection", actions_ready: false, transitioning: true);
+        }
+
+        if (hand.CurrentMode != MegaCrit.Sts2.Core.Nodes.Combat.NPlayerHand.Mode.Play)
+        {
+            return new CombatAutomationState("hand_mode_transition", actions_ready: false, transitioning: true);
+        }
+
+        var me = LocalContext.GetMe(combatState);
+        if (me == null || !me.Creature.IsAlive)
+        {
+            return new CombatAutomationState("player_unavailable", actions_ready: false, transitioning: true);
+        }
+
+        return new CombatAutomationState("player_actionable", actions_ready: true, transitioning: false);
+    }
+
     private static string[] BuildAvailableActionNames(IScreenContext? currentScreen, CombatState? combatState, RunState? runState)
     {
         var names = new List<string>();
@@ -1834,6 +1900,11 @@ internal static class GameStateService
 
     private static RunPayload? BuildRunPayload(IScreenContext? currentScreen, CombatState? combatState, RunState? runState)
     {
+        if (runState == null)
+        {
+            return null;
+        }
+
         var player = LocalContext.GetMe(runState);
         if (player == null)
         {
@@ -1860,7 +1931,7 @@ internal static class GameStateService
                 name = relic.Title.GetFormattedText(),
                 is_melted = relic.IsMelted
             }).ToArray(),
-            players = runState!.Players
+            players = runState.Players
                 .OrderBy(runState.GetPlayerSlotIndex)
                 .Select(otherPlayer => BuildRunPlayerSummaryPayload(runState, otherPlayer, connectedPlayerIds, player.NetId))
                 .ToArray(),
@@ -4354,6 +4425,12 @@ internal sealed class GameStatePayload
 
     public bool in_combat { get; init; }
 
+    public string combat_turn_state { get; init; } = "out_of_combat";
+
+    public bool combat_actions_ready { get; init; }
+
+    public bool combat_transitioning { get; init; }
+
     public int? turn { get; init; }
 
     public string[] available_actions { get; init; } = Array.Empty<string>();
@@ -4390,6 +4467,8 @@ internal sealed class GameStatePayload
 
     public object? agent_view { get; init; }
 }
+
+internal readonly record struct CombatAutomationState(string turn_state, bool actions_ready, bool transitioning);
 
 internal sealed class SessionPayload
 {

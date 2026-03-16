@@ -1,0 +1,560 @@
+<Window x:Class="STS2AIAgent.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="STS2 AI 托管台"
+        Width="1180"
+        Height="860"
+        MinWidth="1024"
+        MinHeight="760"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResizeWithGrip"
+        Background="Transparent"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+  <Window.Resources>
+    <Color x:Key="WindowColor">#FFF5F5F7</Color>
+    <Color x:Key="SurfaceColor">#FFFFFFFF</Color>
+    <Color x:Key="SurfaceAltColor">#FFF9F9FB</Color>
+    <Color x:Key="BorderColor">#14000000</Color>
+    <Color x:Key="TitleColor">#FF111111</Color>
+    <Color x:Key="TextColor">#FF3A3A3C</Color>
+    <Color x:Key="MutedColor">#FF6E6E73</Color>
+    <Color x:Key="AccentColor">#FF0071E3</Color>
+    <Color x:Key="AccentSoftColor">#FFEAF4FF</Color>
+    <Color x:Key="SuccessColor">#FF2F9E44</Color>
+    <Color x:Key="WarnColor">#FFB7791F</Color>
+    <Color x:Key="DangerColor">#FFD92D20</Color>
+
+    <SolidColorBrush x:Key="WindowBrush" Color="{StaticResource WindowColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="{StaticResource SurfaceAltColor}" />
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="TitleBrush" Color="{StaticResource TitleColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="MutedBrush" Color="{StaticResource MutedColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoftColor}" />
+
+    <Style x:Key="CardStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="Padding" Value="26" />
+    </Style>
+
+    <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="Foreground" Value="{StaticResource TitleBrush}" />
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="BodyTextStyle" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="Foreground" Value="{StaticResource TitleBrush}" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="InputTextBoxStyle" TargetType="TextBox">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="AcceptsReturn" Value="False" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    </Style>
+
+    <Style x:Key="InputPasswordStyle" TargetType="PasswordBox">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    </Style>
+
+    <Style x:Key="InputContainerStyle" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Padding" Value="16,13" />
+    </Style>
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Padding" Value="18,10" />
+      <Setter Property="Height" Value="42" />
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="14">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Opacity" Value="0.94" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Opacity" Value="0.82" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+      <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TitleBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="14">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Opacity" Value="0.96" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Opacity" Value="0.86" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PromptTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource InputTextBoxStyle}">
+      <Setter Property="AcceptsReturn" Value="True" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+      <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="MinHeight" Value="220" />
+    </Style>
+
+    <Style x:Key="TrafficButtonStyle" TargetType="Button">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="10">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid Background="Transparent">
+    <Border Background="{StaticResource WindowBrush}" CornerRadius="32">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="72" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="#CCFFFFFF"
+                CornerRadius="32,32,0,0"
+                BorderBrush="{StaticResource BorderBrushSoft}"
+                BorderThickness="0,0,0,1"
+                MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+          <Grid Margin="28,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+              <TextBlock Text="STS2 AI 托管台"
+                         FontFamily="Microsoft YaHei UI"
+                         FontSize="22"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource TitleBrush}" />
+              <TextBlock Text="可先启动托管，进入对局后会自动接管；停止后可修改当前角色提示词。"
+                         Style="{StaticResource CaptionTextStyle}"
+                         Margin="0,2,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+              <Border VerticalAlignment="Center"
+                      Background="{StaticResource SurfaceBrush}"
+                      BorderBrush="{StaticResource BorderBrushSoft}"
+                      BorderThickness="1"
+                      CornerRadius="16"
+                      Padding="14,8">
+                <TextBlock x:Name="FooterHintTextBlock"
+                           Style="{StaticResource CaptionTextStyle}"
+                           Text="等待连接游戏内服务。" />
+              </Border>
+              <Button Background="{StaticResource SurfaceBrush}" Style="{StaticResource TrafficButtonStyle}" Click="MinimizeButton_Click">
+                <Path Width="10" Height="10" Stretch="Uniform" Fill="{StaticResource TitleBrush}" Data="M3,11H21V13H3Z" />
+              </Button>
+              <Button Background="{StaticResource SurfaceBrush}" Style="{StaticResource TrafficButtonStyle}" Click="CloseButton_Click">
+                <Path Width="10" Height="10" Stretch="Uniform" Fill="{StaticResource TitleBrush}" Data="M6.41,5L12,10.59L17.59,5L19,6.41L13.41,12L19,17.59L17.59,19L12,13.41L6.41,19L5,17.59L10.59,12L5,6.41L6.41,5Z" />
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="28,24,28,28">
+            <Border Style="{StaticResource CardStyle}">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="340" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Row="0" Grid.Column="0">
+                  <TextBlock Text="托管总览" Style="{StaticResource SectionTitleStyle}" />
+                  <TextBlock x:Name="EntryGuardTextBlock"
+                             Style="{StaticResource CaptionTextStyle}"
+                             Margin="0,10,0,0"
+                             Text="等待进入一局对局后再启动托管。" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                  <Border x:Name="GameStatusBadge"
+                          Background="#FFF2F2F7"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="16"
+                          Padding="14,10"
+                          Margin="0,0,12,0">
+                    <StackPanel>
+                      <TextBlock Text="连接状态" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock x:Name="GameStatusTextBlock"
+                                 FontFamily="Microsoft YaHei UI"
+                                 FontSize="15"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TitleBrush}"
+                                 Text="未连接" />
+                    </StackPanel>
+                  </Border>
+                  <Border x:Name="AgentStatusBadge"
+                          Background="#FFF2F2F7"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="16"
+                          Padding="14,10">
+                    <StackPanel>
+                      <TextBlock Text="托管状态" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock x:Name="AgentStatusTextBlock"
+                                 FontFamily="Microsoft YaHei UI"
+                                 FontSize="15"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TitleBrush}"
+                                 Text="未启动" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <Border x:Name="InlineNoticeBorder"
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Background="#FFFFF4E5"
+                        BorderBrush="#33B7791F"
+                        BorderThickness="1"
+                        CornerRadius="16"
+                        Padding="14,12"
+                        Margin="0,18,0,0"
+                        Visibility="Collapsed">
+                  <TextBlock x:Name="InlineNoticeTextBlock"
+                             FontFamily="Microsoft YaHei UI"
+                             FontSize="13"
+                             Foreground="{StaticResource TitleBrush}"
+                             TextWrapping="Wrap"
+                             Text="请进入游戏再启动 AI。" />
+                </Border>
+
+                <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,24,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.1*" />
+                    <ColumnDefinition Width="0.9*" />
+                    <ColumnDefinition Width="1.1*" />
+                  </Grid.ColumnDefinitions>
+
+                  <Border Grid.Column="0"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="22"
+                          Padding="22"
+                          Margin="0,0,16,0">
+                    <StackPanel>
+                      <TextBlock Text="当前角色" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock x:Name="CharacterNameTextBlock"
+                                 FontFamily="Microsoft YaHei UI"
+                                 FontSize="24"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TitleBrush}"
+                                 Margin="0,6,0,0"
+                                 Text="等待进入对局" />
+                      <TextBlock x:Name="CharacterIdTextBlock"
+                                 Style="{StaticResource CaptionTextStyle}"
+                                 Margin="0,8,0,0"
+                                 Text="角色提示词会在进入对局后自动切换。" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Grid.Column="1"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="22"
+                          Padding="22"
+                          Margin="0,0,16,0">
+                    <StackPanel>
+                      <TextBlock Text="当前阶段" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock x:Name="ScreenPhaseTextBlock"
+                                 FontFamily="Microsoft YaHei UI"
+                                 FontSize="20"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TitleBrush}"
+                                 Margin="0,6,0,0"
+                                 Text="主菜单 / 菜单阶段" />
+                      <TextBlock x:Name="PromptOwnerTextBlock"
+                                 Style="{StaticResource CaptionTextStyle}"
+                                 Margin="0,8,0,0"
+                                 Text="未检测到当前角色提示词。" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Grid.Column="2"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="22"
+                          Padding="22">
+                    <StackPanel>
+                      <TextBlock Text="编辑状态" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock x:Name="EditHintTextBlock"
+                                 FontFamily="Microsoft YaHei UI"
+                                 FontSize="18"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TitleBrush}"
+                                 Margin="0,6,0,0"
+                                 Text="停止后可编辑提示词" />
+                      <TextBlock Text="运行中会锁定配置与提示词，避免中途切换上下文导致决策漂移。"
+                                 Style="{StaticResource CaptionTextStyle}"
+                                 Margin="0,8,0,0" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+
+                <Grid Grid.Row="3" Grid.ColumnSpan="2" Margin="0,28,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+
+                  <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                    <TextBlock Text="API Base URL" Style="{StaticResource FieldLabelStyle}" />
+                    <Border Style="{StaticResource InputContainerStyle}">
+                      <TextBox x:Name="BaseUrlTextBox"
+                               Style="{StaticResource InputTextBoxStyle}"
+                               TextChanged="BaseConfigChanged" />
+                    </Border>
+
+                    <TextBlock Text="模型" Style="{StaticResource FieldLabelStyle}" Margin="0,18,0,8" />
+                    <Border Style="{StaticResource InputContainerStyle}">
+                      <TextBox x:Name="ModelTextBox"
+                               Style="{StaticResource InputTextBoxStyle}"
+                               TextChanged="BaseConfigChanged" />
+                    </Border>
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="API Key" Style="{StaticResource FieldLabelStyle}" />
+                    <Border Style="{StaticResource InputContainerStyle}">
+                      <PasswordBox x:Name="ApiKeyBox"
+                                   Style="{StaticResource InputPasswordStyle}"
+                                   PasswordChanged="ApiKeyBox_PasswordChanged" />
+                    </Border>
+
+                    <UniformGrid Columns="4" Margin="0,18,0,0">
+                      <Button x:Name="SaveButton"
+                              Style="{StaticResource SecondaryButtonStyle}"
+                              Click="SaveButton_Click"
+                              Margin="0,0,8,0"
+                              Content="保存配置" />
+                      <Button x:Name="TestConnectionButton"
+                              Style="{StaticResource SecondaryButtonStyle}"
+                              Click="TestConnectionButton_Click"
+                              Margin="0,0,8,0"
+                              Content="检测连接" />
+                      <Button x:Name="StartButton"
+                              Style="{StaticResource PrimaryButtonStyle}"
+                              Click="StartButton_Click"
+                              Margin="0,0,8,0"
+                              Content="开始托管" />
+                      <Button x:Name="StopButton"
+                              Style="{StaticResource SecondaryButtonStyle}"
+                              Click="StopButton_Click"
+                              Content="停止托管" />
+                    </UniformGrid>
+                  </StackPanel>
+                </Grid>
+              </Grid>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}" Margin="0,20,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="380" />
+                  <ColumnDefinition Width="24" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                  <TextBlock x:Name="ActiveAgentTitleTextBlock"
+                             Style="{StaticResource SectionTitleStyle}"
+                             Text="等待中" />
+                  <TextBlock Text="战斗中显示“正在战斗”，非战斗爬塔阶段显示“正在爬塔”。"
+                             Style="{StaticResource CaptionTextStyle}"
+                             Margin="0,10,0,0" />
+
+                  <TextBlock Text="最近动作" Style="{StaticResource FieldLabelStyle}" Margin="0,28,0,8" />
+                  <TextBlock x:Name="AgentActionTextBlock" Style="{StaticResource BodyTextStyle}" Text="正在观察" />
+
+                  <TextBlock Text="错误信息" Style="{StaticResource FieldLabelStyle}" Margin="0,28,0,8" />
+                  <TextBlock x:Name="AgentErrorTextBlock" Style="{StaticResource BodyTextStyle}" Text="当前没有错误。" />
+                </StackPanel>
+
+                <Grid Grid.Column="2">
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+
+                  <Border Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="22"
+                          Padding="22">
+                    <StackPanel>
+                      <TextBlock Text="当前计划" Style="{StaticResource FieldLabelStyle}" />
+                      <TextBlock x:Name="AgentPlanTextBlock" Style="{StaticResource BodyTextStyle}" Text="暂无计划" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Grid.Row="1"
+                          Background="{StaticResource SurfaceAltBrush}"
+                          BorderBrush="{StaticResource BorderBrushSoft}"
+                          BorderThickness="1"
+                          CornerRadius="22"
+                          Padding="22"
+                          Margin="0,16,0,0">
+                    <StackPanel>
+                      <TextBlock Text="决策理由" Style="{StaticResource FieldLabelStyle}" />
+                      <TextBlock x:Name="AgentReasonTextBlock" Style="{StaticResource BodyTextStyle}" Text="暂无推理" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </Grid>
+            </Border>
+
+            <Grid Margin="0,20,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+
+              <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <TextBlock Text="战斗提示词" Style="{StaticResource SectionTitleStyle}" />
+                  <TextBlock Text="当前角色专属。用于战斗回合内的出牌、药水、目标与结束回合判断。"
+                             Style="{StaticResource CaptionTextStyle}"
+                             Margin="0,10,0,0" />
+                  <Border Style="{StaticResource InputContainerStyle}" Margin="0,18,0,0">
+                    <TextBox x:Name="CombatPromptTextBox"
+                             Style="{StaticResource PromptTextBoxStyle}"
+                             TextChanged="CombatPromptTextBox_TextChanged" />
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <TextBlock Text="爬塔提示词" Style="{StaticResource SectionTitleStyle}" />
+                  <TextBlock Text="当前角色专属。用于路线、抓牌、商店、休息点、事件与长期流派规划。"
+                             Style="{StaticResource CaptionTextStyle}"
+                             Margin="0,10,0,0" />
+                  <Border Style="{StaticResource InputContainerStyle}" Margin="0,18,0,0">
+                    <TextBox x:Name="RoutePromptTextBox"
+                             Style="{StaticResource PromptTextBoxStyle}"
+                             TextChanged="RoutePromptTextBox_TextChanged" />
+                  </Border>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

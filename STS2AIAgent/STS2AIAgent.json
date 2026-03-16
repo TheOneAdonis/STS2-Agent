@@ -1,0 +1,11 @@
+{
+  "id": "STS2AIAgent",
+  "name": "STS2 AI Agent",
+  "author": "chart",
+  "description": "Direct in-game AI agent runtime for Slay the Spire 2.",
+  "version": "0.1.0",
+  "has_pck": true,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": true
+}

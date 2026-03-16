@@ -1,5 +1,7 @@
 STS2AIAgent/bin/
 STS2AIAgent/obj/
+STS2AIAgent.Desktop/bin/
+STS2AIAgent.Desktop/obj/
 STS2AIAgent/_scratch/
 STS2AIAgent/local.props
 build/
@@ -24,3 +26,8 @@ _bmad-output/
 .claude/
 .serena/
 node_modules/
+.dotnet/
+.dotnet_home/
+.nuget/
+.tools/
+.uv-cache/

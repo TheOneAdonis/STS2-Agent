@@ -1,6 +1,8 @@
 using System.Threading;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
+using STS2AIAgent.Agent;
+using STS2AIAgent.Desktop;
 using STS2AIAgent.Game;
 using STS2AIAgent.Server;
 
@@ -18,7 +20,14 @@ public static class ModEntry
         Log.Info($"{LogPrefix} Initializing");
         RegisterShutdownHooks();
         GameThread.Initialize();
+        AiAgentService.Instance.Initialize();
+        _ = GameThread.InvokeAsync(() =>
+        {
+            AiServicePumpNode.EnsureMounted();
+            return 0;
+        });
         HttpServer.Instance.Start();
+        DesktopWindowLauncher.TryLaunch();
         Log.Info($"{LogPrefix} Ready");
     }
 
@@ -37,6 +46,7 @@ public static class ModEntry
     {
         try
         {
+            AiAgentService.Instance.Shutdown();
             HttpServer.Instance.Stop();
         }
         catch (Exception ex)

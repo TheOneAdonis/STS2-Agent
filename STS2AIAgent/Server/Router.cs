@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using MegaCrit.Sts2.Core.Debug;
 using MegaCrit.Sts2.Core.Logging;
+using STS2AIAgent.Agent;
 using STS2AIAgent.Game;
 
 namespace STS2AIAgent.Server;
@@ -93,6 +94,137 @@ internal static class Router
                     ok = true,
                     request_id = requestId,
                     data = actionResponse
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/snapshot")
+            {
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId,
+                    data = AiAgentService.Instance.GetSnapshot()
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/config")
+            {
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId,
+                    data = AiAgentService.Instance.GetSnapshot().config
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/config")
+            {
+                var config = await JsonHelper.DeserializeAsync<AiAgentConfig>(request.InputStream, cancellationToken);
+                if (config == null)
+                {
+                    throw new ApiException(400, "invalid_request", "Request body must contain a valid AI config object.");
+                }
+
+                AiAgentService.Instance.SaveConfig(config);
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId,
+                    data = AiAgentService.Instance.GetSnapshot().config
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/request-step")
+            {
+                AiAgentService.Instance.RequestSingleStep();
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/start")
+            {
+                var startResult = await AiAgentService.Instance.ResumeAutomationAsync();
+                if (!startResult.ok)
+                {
+                    throw new ApiException(409, "invalid_state", startResult.reason);
+                }
+
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/pause")
+            {
+                AiAgentService.Instance.PauseAutomation();
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/execute-pending")
+            {
+                AiAgentService.Instance.ExecutePendingDecision();
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/stop")
+            {
+                AiAgentService.Instance.Stop();
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId
+                });
+                statusCode = 200;
+                return;
+            }
+
+            if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+                request.Url?.AbsolutePath == "/agent/test-llm")
+            {
+                var config = await JsonHelper.DeserializeAsync<AiAgentConfig>(request.InputStream, cancellationToken);
+                var result = await AiAgentService.Instance.TestConnectionAsync(config, cancellationToken);
+                await WriteJsonAsync(response, 200, new
+                {
+                    ok = true,
+                    request_id = requestId,
+                    data = result
                 });
                 statusCode = 200;
                 return;
