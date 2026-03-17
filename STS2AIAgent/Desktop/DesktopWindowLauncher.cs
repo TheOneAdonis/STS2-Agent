@@ -7,7 +7,7 @@ namespace STS2AIAgent.Desktop;
 internal static class DesktopWindowLauncher
 {
     private const string LogPrefix = "[STS2AIAgent.Desktop]";
-    private const string DesktopExeName = "STS2AIAgent.Desktop.exe";
+    private const string DesktopExeName = "CreativeAI.Desktop.exe";
     private static int _launchAttempted;
 
     public static void TryLaunch()

@@ -16,7 +16,7 @@ $Sts2DataDir = Resolve-Sts2DataDir -DataDir $Sts2DataDir -GameRoot $GameRoot
 Set-RepoToolingEnvironment -RepoRoot $ProjectRoot
 $dotnetExe = Resolve-DotNetExecutable -RepoRoot $ProjectRoot
 
-$modName = "STS2AIAgent"
+$modName = "CreativeAI"
 $modProject = Join-Path $ProjectRoot "STS2AIAgent/STS2AIAgent.csproj"
 $desktopProject = Join-Path $ProjectRoot "STS2AIAgent.Desktop/STS2AIAgent.Desktop.csproj"
 $buildOutputDir = Join-Path $ProjectRoot "STS2AIAgent/bin/$Configuration/net9.0"
@@ -111,7 +111,7 @@ Write-Host "[build-mod] Done."
 Write-Host "[build-mod] Installed files:"
 Write-Host "  $(Join-Path $installedModDir "$modName.dll")"
 Write-Host "  $(Join-Path $installedModDir "$modName.pck")"
-Write-Host "  $(Join-Path $installedDesktopDir "STS2AIAgent.Desktop.exe")"
+Write-Host "  $(Join-Path $installedDesktopDir "CreativeAI.Desktop.exe")"
 if (Test-Path (Join-Path $installedModDir "$modName.json")) {
     Write-Host "  $(Join-Path $installedModDir "$modName.json")"
 }

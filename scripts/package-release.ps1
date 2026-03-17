@@ -1,10 +1,11 @@
 param(
-    [string]$ProjectRoot = "C:/Users/chart/Documents/project/sp",
+    [string]$ProjectRoot = "",
     [string]$Configuration = "Release",
     [string]$OutputRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "repo-env.ps1")
 
 function Resolve-FullPath {
     param([string]$PathValue)
@@ -44,7 +45,7 @@ function Get-UniquePath {
     }
 }
 
-$ProjectRoot = Resolve-FullPath -PathValue $ProjectRoot
+$ProjectRoot = Resolve-RepoRoot -InputRoot $ProjectRoot
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $ProjectRoot "build/release"
@@ -55,10 +56,10 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 $manifestPath = Join-Path $ProjectRoot "STS2AIAgent/mod_manifest.json"
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $version = $manifest.version
-$releaseBaseName = "sts2-ai-agent-v$version-windows"
+$releaseBaseName = "creative-ai-v$version-windows"
 
 $buildScript = Join-Path $ProjectRoot "scripts/build-mod.ps1"
-$stagingModDir = Join-Path $ProjectRoot "build/mods/STS2AIAgent"
+$stagingModDir = Join-Path $ProjectRoot "build/mods/CreativeAI"
 $releaseDir = Get-UniquePath -BasePath (Join-Path $OutputRoot $releaseBaseName)
 $zipPath = Get-UniquePath -BasePath (Join-Path $OutputRoot $releaseBaseName) -Extension ".zip"
 
@@ -80,8 +81,8 @@ New-Item -ItemType Directory -Force -Path $mcpOutputDir | Out-Null
 New-Item -ItemType Directory -Force -Path $scriptOutputDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $mcpOutputDir "src") | Out-Null
 
-Copy-Item -Path (Join-Path $stagingModDir "STS2AIAgent.dll") -Destination (Join-Path $modOutputDir "STS2AIAgent.dll") -Force
-Copy-Item -Path (Join-Path $stagingModDir "STS2AIAgent.pck") -Destination (Join-Path $modOutputDir "STS2AIAgent.pck") -Force
+Copy-Item -Path (Join-Path $stagingModDir "CreativeAI.dll") -Destination (Join-Path $modOutputDir "CreativeAI.dll") -Force
+Copy-Item -Path (Join-Path $stagingModDir "CreativeAI.pck") -Destination (Join-Path $modOutputDir "CreativeAI.pck") -Force
 
 Copy-Item -Path (Join-Path $ProjectRoot "README.md") -Destination (Join-Path $releaseDir "README.md") -Force
 Copy-Item -Path (Join-Path $mcpSourceDir "README.md") -Destination (Join-Path $mcpOutputDir "README.md") -Force

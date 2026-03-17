@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>STS2AIAgent.Desktop</AssemblyName>
+    <AssemblyName>CreativeAI.Desktop</AssemblyName>
     <RootNamespace>STS2AIAgent.Desktop</RootNamespace>
   </PropertyGroup>
 </Project>

@@ -1,9 +1,9 @@
 {
-  "id": "STS2AIAgent",
-  "name": "STS2 AI Agent",
+  "id": "CreativeAI",
+  "name": "创造性AI",
   "author": "chart",
   "description": "Direct in-game AI agent runtime for Slay the Spire 2.",
-  "version": "0.1.0",
+  "version": "0.14",
   "has_pck": true,
   "has_dll": true,
   "dependencies": [],

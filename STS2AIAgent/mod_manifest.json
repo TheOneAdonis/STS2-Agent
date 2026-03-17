@@ -1,7 +1,7 @@
 {
-  "pck_name": "STS2AIAgent",
-  "name": "STS2 AI Agent",
+  "pck_name": "CreativeAI",
+  "name": "创造性AI",
   "author": "chart",
-  "description": "Minimal HTTP bootstrap mod for STS2 AI Agent.",
-  "version": "0.1.0"
+  "description": "Minimal HTTP bootstrap mod for 创造性AI.",
+  "version": "0.14"
 }

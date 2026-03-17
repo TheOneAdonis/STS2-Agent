@@ -12,7 +12,7 @@ $dotnetExe = Resolve-DotNetExecutable -RepoRoot $ProjectRoot
 
 $projectPath = Join-Path $ProjectRoot "STS2AIAgent.Desktop\\STS2AIAgent.Desktop.csproj"
 $outputDir = Join-Path $ProjectRoot "STS2AIAgent.Desktop\\bin\\$Configuration\\net9.0-windows"
-$exePath = Join-Path $outputDir "STS2AIAgent.Desktop.exe"
+$exePath = Join-Path $outputDir "CreativeAI.Desktop.exe"
 
 & $dotnetExe build $projectPath -c $Configuration | Out-Host
 if ($LASTEXITCODE -ne 0) {

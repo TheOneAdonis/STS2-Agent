@@ -11,9 +11,9 @@ namespace STS2AIAgent.Server;
 
 internal static class Router
 {
-    private const string ServiceName = "sts2-ai-agent";
+    private const string ServiceName = "creative-ai";
     private const string ProtocolVersion = "2026-03-11-v1";
-    private const string ModVersion = "0.1.0";
+    private const string ModVersion = "0.14";
     private const string LogPrefix = "[STS2AIAgent.Router]";
 
     private static long _requestCounter;

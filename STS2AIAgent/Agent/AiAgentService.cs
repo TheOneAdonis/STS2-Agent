@@ -182,12 +182,6 @@ internal sealed class AiAgentService
         var state = await GameThread.InvokeAsync(GameStateService.BuildStatePayload).ConfigureAwait(false);
         CaptureObservedState(state);
         var canStartImmediately = TryEvaluateStartAvailability(state, out var reason);
-        if (!canStartImmediately)
-        {
-            AddLog("WARN", $"Rejected automation start: {reason}");
-            return (false, reason);
-        }
-
         AiAgentConfig? configToPersist = null;
         var requestImmediateStep = false;
 
@@ -213,18 +207,22 @@ internal sealed class AiAgentService
             }
 
             _automationPaused = false;
-            _status = _isBusy ? _status : "就绪";
+            _status = _isBusy
+                ? _status
+                : canStartImmediately
+                    ? "就绪"
+                    : "等待进入游戏";
             foreach (var context in _contexts.Values)
             {
                 if (context.Status is "已暂停" or "未启动" or "已停止" or "等待进入游戏")
                 {
-                    context.Status = "就绪";
+                    context.Status = canStartImmediately ? "就绪" : "等待进入游戏";
                 }
 
                 context.Error = string.Empty;
             }
 
-            requestImmediateStep = !_isBusy && _config.auto_combat_loop;
+            requestImmediateStep = canStartImmediately && !_isBusy && _config.auto_combat_loop;
         }
 
         if (configToPersist != null)
@@ -236,16 +234,25 @@ internal sealed class AiAgentService
             }
         }
 
-        AddLog("INFO", configToPersist != null
-            ? "Agent automation resumed and enable_agent was turned on from the overlay."
-            : "Agent automation resumed from the overlay.");
+        if (canStartImmediately)
+        {
+            AddLog("INFO", configToPersist != null
+                ? "Agent automation resumed and enable_agent was turned on from the overlay."
+                : "Agent automation resumed from the overlay.");
+        }
+        else
+        {
+            AddLog("INFO", configToPersist != null
+                ? $"Agent automation armed from the overlay and is waiting for a runnable in-run state: {reason}"
+                : $"Agent automation remains armed and is waiting for a runnable in-run state: {reason}");
+        }
 
         if (requestImmediateStep)
         {
             _ = ProbeAutoLoopAsync();
         }
 
-        return (true, string.Empty);
+        return (true, canStartImmediately ? string.Empty : reason);
     }
 
     public void ExecutePendingDecision()
@@ -412,7 +419,7 @@ internal sealed class AiAgentService
 
         if (!inRunPhase && !inRunnableScreen)
         {
-            reason = "请先进入一局爬塔后再启动托管。";
+            reason = $"当前界面={TranslateScreen(state.screen)}，当前阶段={TranslateSessionPhase(state.session.phase)}。请先进入一局爬塔后再启动托管。";
             return false;
         }
 
@@ -424,7 +431,7 @@ internal sealed class AiAgentService
 
         if (state.run == null)
         {
-            reason = "尚未进入可托管的对局状态，请进入地图、战斗或结算节点后再启动。";
+            reason = $"当前界面={TranslateScreen(state.screen)}，当前阶段={TranslateSessionPhase(state.session.phase)}。尚未进入可托管的对局状态，请进入地图、战斗或结算节点后再启动。";
             return false;
         }
 
@@ -455,12 +462,58 @@ internal sealed class AiAgentService
             return (state.run.character_id ?? string.Empty, state.run.character_name ?? string.Empty);
         }
 
+        if (TryResolveSelectedCharacter(
+            state.character_select?.selected_character_id,
+            state.character_select?.characters,
+            out var characterId,
+            out var characterName))
+        {
+            return (characterId, characterName);
+        }
+
         if (state.multiplayer_lobby?.selected_character_id is { Length: > 0 } selectedCharacterId)
         {
+            if (TryResolveSelectedCharacter(
+                selectedCharacterId,
+                state.multiplayer_lobby.characters,
+                out characterId,
+                out characterName))
+            {
+                return (characterId, characterName);
+            }
+
             return (selectedCharacterId, string.Empty);
         }
 
         return (string.Empty, string.Empty);
+    }
+
+    private static bool TryResolveSelectedCharacter(
+        string? selectedCharacterId,
+        IReadOnlyList<CharacterSelectOptionPayload>? characters,
+        out string characterId,
+        out string characterName)
+    {
+        characterId = string.Empty;
+        characterName = string.Empty;
+        if (string.IsNullOrWhiteSpace(selectedCharacterId))
+        {
+            return false;
+        }
+
+        characterId = selectedCharacterId.Trim();
+        var resolvedCharacterId = characterId;
+        if (characters != null)
+        {
+            var selectedCharacter = characters.FirstOrDefault(character =>
+                string.Equals(character.character_id, resolvedCharacterId, StringComparison.OrdinalIgnoreCase));
+            if (selectedCharacter != null)
+            {
+                characterName = selectedCharacter.name?.Trim() ?? string.Empty;
+            }
+        }
+
+        return true;
     }
 
     private async Task RunSingleStepAsync(CancellationToken cancellationToken, bool forceCombatState = false)
@@ -1192,6 +1245,18 @@ internal sealed class AiAgentService
             "GAME_OVER" => "结算",
             "MAIN_MENU" => "主菜单",
             _ => screen
+        };
+    }
+
+    private static string TranslateSessionPhase(string phase)
+    {
+        return phase switch
+        {
+            "run" => "对局中",
+            "menu" => "菜单阶段",
+            "character_select" => "角色选择",
+            "multiplayer_lobby" => "多人大厅",
+            _ => phase
         };
     }
 

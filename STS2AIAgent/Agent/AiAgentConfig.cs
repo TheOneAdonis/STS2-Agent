@@ -188,7 +188,7 @@ internal static class AiSecretMasker
 
 internal static class AiRuntimePaths
 {
-    private const string AppDirName = "sts2-ai-agent";
+    private const string AppDirName = "creative-ai";
     private const string KnowledgeDirName = "knowledge";
     private const string ConfigDirName = "config";
 

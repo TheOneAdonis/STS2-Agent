@@ -1,7 +1,7 @@
 <Window x:Class="STS2AIAgent.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="STS2 AI 托管台"
+        Title="创造性AI 托管台"
         Width="1180"
         Height="860"
         MinWidth="1024"
@@ -172,6 +172,7 @@
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
       <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
       <Setter Property="MinHeight" Value="220" />
     </Style>
 
@@ -220,7 +221,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-              <TextBlock Text="STS2 AI 托管台"
+              <TextBlock Text="创造性AI 托管台"
                          FontFamily="Microsoft YaHei UI"
                          FontSize="22"
                          FontWeight="SemiBold"
@@ -228,6 +229,10 @@
               <TextBlock Text="可先启动托管，进入对局后会自动接管；停止后可修改当前角色提示词。"
                          Style="{StaticResource CaptionTextStyle}"
                          Margin="0,2,0,0" />
+              <TextBlock x:Name="StatusHintTextBlock"
+                         Style="{StaticResource CaptionTextStyle}"
+                         Margin="0,4,0,0"
+                         Text="等待连接游戏内服务。" />
             </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -237,9 +242,9 @@
                       BorderThickness="1"
                       CornerRadius="16"
                       Padding="14,8">
-                <TextBlock x:Name="FooterHintTextBlock"
+                <TextBlock x:Name="VersionTextBlock"
                            Style="{StaticResource CaptionTextStyle}"
-                           Text="等待连接游戏内服务。" />
+                           Text="v0.14" />
               </Border>
               <Button Background="{StaticResource SurfaceBrush}" Style="{StaticResource TrafficButtonStyle}" Click="MinimizeButton_Click">
                 <Path Width="10" Height="10" Stretch="Uniform" Fill="{StaticResource TitleBrush}" Data="M3,11H21V13H3Z" />
@@ -368,7 +373,7 @@
                           Padding="22"
                           Margin="0,0,16,0">
                     <StackPanel>
-                      <TextBlock Text="当前阶段" Style="{StaticResource CaptionTextStyle}" />
+                      <TextBlock Text="当前界面与阶段" Style="{StaticResource CaptionTextStyle}" />
                       <TextBlock x:Name="ScreenPhaseTextBlock"
                                  FontFamily="Microsoft YaHei UI"
                                  FontSize="20"
@@ -530,9 +535,12 @@
                   <TextBlock Text="当前角色专属。用于战斗回合内的出牌、药水、目标与结束回合判断。"
                              Style="{StaticResource CaptionTextStyle}"
                              Margin="0,10,0,0" />
-                  <Border Style="{StaticResource InputContainerStyle}" Margin="0,18,0,0">
+                  <Border Style="{StaticResource InputContainerStyle}"
+                          Margin="0,18,0,0"
+                          MouseLeftButtonDown="CombatPromptContainer_MouseLeftButtonDown">
                     <TextBox x:Name="CombatPromptTextBox"
                              Style="{StaticResource PromptTextBoxStyle}"
+                             PreviewMouseLeftButtonDown="PromptTextBox_PreviewMouseLeftButtonDown"
                              TextChanged="CombatPromptTextBox_TextChanged" />
                   </Border>
                 </StackPanel>
@@ -544,9 +552,12 @@
                   <TextBlock Text="当前角色专属。用于路线、抓牌、商店、休息点、事件与长期流派规划。"
                              Style="{StaticResource CaptionTextStyle}"
                              Margin="0,10,0,0" />
-                  <Border Style="{StaticResource InputContainerStyle}" Margin="0,18,0,0">
+                  <Border Style="{StaticResource InputContainerStyle}"
+                          Margin="0,18,0,0"
+                          MouseLeftButtonDown="RoutePromptContainer_MouseLeftButtonDown">
                     <TextBox x:Name="RoutePromptTextBox"
                              Style="{StaticResource PromptTextBoxStyle}"
+                             PreviewMouseLeftButtonDown="PromptTextBox_PreviewMouseLeftButtonDown"
                              TextChanged="RoutePromptTextBox_TextChanged" />
                   </Border>
                 </StackPanel>

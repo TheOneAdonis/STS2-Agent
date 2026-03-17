@@ -7,7 +7,7 @@ namespace STS2AIAgent.Server;
 public sealed class HttpServer
 {
     private const string DefaultHost = "127.0.0.1";
-    private const int DefaultPort = 8080;
+    private const int DefaultPort = 8081;
     private const string LogPrefix = "[STS2AIAgent.HttpServer]";
     private const int StartRetryCount = 20;
     private static readonly TimeSpan StartRetryDelay = TimeSpan.FromMilliseconds(250);

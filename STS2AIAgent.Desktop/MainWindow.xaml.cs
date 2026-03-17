@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     private static readonly Brush IdleBadgeBackground = CreateBrush("#FFF2F2F7");
     private static readonly Brush IdleBadgeBorder = CreateBrush("#1F000000");
 
-    private readonly AgentApiClient _apiClient = new("http://127.0.0.1:8080/");
+    private readonly AgentApiClient _apiClient = new("http://127.0.0.1:8081/");
     private readonly DispatcherTimer _refreshTimer;
     private readonly string _configPath;
     private AgentConfig _draftConfig = new();
@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private int _refreshFailureCount;
     private DateTime _statusHintStickyUntilUtc = DateTime.MinValue;
     private string _currentPromptKey = string.Empty;
+    private string _currentPromptOwnerName = string.Empty;
 
     public MainWindow()
     {
@@ -48,7 +49,7 @@ public partial class MainWindow : Window
 
         _configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "sts2-ai-agent",
+            "creative-ai",
             "config",
             "in-game-agent.json");
 
@@ -124,33 +125,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!CanStartFromSnapshot(_latestSnapshot))
-        {
-            try
-            {
-                await RunCommandAsync(async () =>
-                {
-                    var disabledConfig = CollectManagedConfig(enableAgent: false);
-                    await PersistConfigAsync(disabledConfig, pushToGame: true);
-                    await _apiClient.StopAsync(CancellationToken.None);
-                    ShowInlineNotice("请进入游戏再启动 AI。");
-                    SetStatusHint("请进入游戏再启动 AI。", stickySeconds: 6);
-                    await RefreshSnapshotAsync(force: true);
-                });
-            }
-            catch (Exception ex)
-            {
-                SetStatusHint($"启动失败：{ex.Message}", stickySeconds: 8);
-            }
-
-            return;
-        }
-
         try
         {
             await RunCommandAsync(async () =>
             {
-                var config = CollectManagedConfig(enableAgent: true);
+                var config = CollectManagedConfig(enableAgent: false);
                 await PersistConfigAsync(config, pushToGame: true);
                 await _apiClient.StartAsync(CancellationToken.None);
                 await RefreshSnapshotAsync(force: true);
@@ -160,6 +139,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            ShowInlineNotice(ex.Message);
             SetStatusHint($"启动失败：{ex.Message}", stickySeconds: 8);
         }
     }
@@ -223,6 +203,29 @@ public partial class MainWindow : Window
 
         _draftConfig.api_key = ApiKeyBox.Password.Trim();
         UpdateControlStates();
+    }
+
+    private void CombatPromptContainer_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        FocusPromptEditor(CombatPromptTextBox);
+    }
+
+    private void RoutePromptContainer_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        FocusPromptEditor(RoutePromptTextBox);
+    }
+
+    private void PromptTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TextBox textBox || !textBox.IsEnabled || textBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        textBox.Focus();
+        var caretIndex = textBox.GetCharacterIndexFromPoint(e.GetPosition(textBox), snapToText: true);
+        textBox.CaretIndex = caretIndex >= 0 ? caretIndex : textBox.Text.Length;
+        e.Handled = true;
     }
 
     private void CombatPromptTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -405,10 +408,8 @@ public partial class MainWindow : Window
         CharacterIdTextBlock.Text = string.IsNullOrWhiteSpace(snapshot.current_character_id)
             ? "当前角色提示词会在进入对局后自动切换。"
             : $"角色 ID：{snapshot.current_character_id}";
-        ScreenPhaseTextBlock.Text = $"{TranslateScreen(snapshot.current_screen)} / {TranslatePhase(snapshot.session_phase)}";
-        PromptOwnerTextBlock.Text = string.IsNullOrWhiteSpace(GetPromptKey(snapshot))
-            ? "未检测到当前角色提示词。"
-            : $"正在编辑：{ResolveCharacterDisplayName(snapshot)} 的专属提示词";
+        ScreenPhaseTextBlock.Text = $"当前界面：{TranslateScreen(snapshot.current_screen)}\n当前阶段：{TranslatePhase(snapshot.session_phase)}";
+        PromptOwnerTextBlock.Text = ResolvePromptOwnerText(snapshot);
         var canStart = CanStartFromSnapshot(snapshot);
         if (canStart || snapshot.agent_enabled)
         {
@@ -422,7 +423,9 @@ public partial class MainWindow : Window
             ? "AI 爬塔中，提示词已锁定"
             : snapshot.agent_enabled
                 ? "AI 已启动，等待进入可执行状态"
-                : "未运行，可编辑当前角色提示词";
+                : string.IsNullOrWhiteSpace(_currentPromptKey)
+                    ? "进入任意角色后即可编辑提示词"
+                    : "未运行，可编辑当前角色提示词";
 
         SyncPromptEditors(forceReload: false);
         RenderActiveContext(snapshot);
@@ -476,10 +479,12 @@ public partial class MainWindow : Window
     {
         CharacterNameTextBlock.Text = "等待进入对局";
         CharacterIdTextBlock.Text = "当前角色提示词会在进入对局后自动切换。";
-        ScreenPhaseTextBlock.Text = "主菜单 / 菜单阶段";
-        PromptOwnerTextBlock.Text = "未检测到当前角色提示词。";
+        ScreenPhaseTextBlock.Text = "当前界面：主菜单\n当前阶段：菜单阶段";
+        PromptOwnerTextBlock.Text = ResolvePromptOwnerText(snapshot: null);
         EntryGuardTextBlock.Text = "等待进入一局对局后再启动托管。";
-        EditHintTextBlock.Text = "停止后可编辑提示词";
+        EditHintTextBlock.Text = string.IsNullOrWhiteSpace(_currentPromptKey)
+            ? "进入任意角色后即可编辑提示词"
+            : "未连接游戏，仍可编辑上次角色提示词";
         ActiveAgentTitleTextBlock.Text = "等待中";
         AgentPlanTextBlock.Text = "暂无计划";
         AgentReasonTextBlock.Text = "暂无推理";
@@ -492,14 +497,16 @@ public partial class MainWindow : Window
     private void SyncPromptEditors(bool forceReload)
     {
         var promptKey = GetPromptKey(_latestSnapshot);
-        var keyChanged = !string.Equals(_currentPromptKey, promptKey, StringComparison.OrdinalIgnoreCase);
-        if (keyChanged)
+        var keyChanged = false;
+        if (!string.IsNullOrWhiteSpace(promptKey))
         {
+            keyChanged = !string.Equals(_currentPromptKey, promptKey, StringComparison.OrdinalIgnoreCase);
             _currentPromptKey = promptKey;
+            _currentPromptOwnerName = ResolveCharacterDisplayName(_latestSnapshot!);
         }
 
-        var combatPrompt = ReadPrompt(_draftConfig.character_combat_prompts, promptKey);
-        var routePrompt = ReadPrompt(_draftConfig.character_route_prompts, promptKey);
+        var combatPrompt = ReadPrompt(_draftConfig.character_combat_prompts, _currentPromptKey);
+        var routePrompt = ReadPrompt(_draftConfig.character_route_prompts, _currentPromptKey);
         if (forceReload || keyChanged || !CombatPromptTextBox.IsKeyboardFocusWithin)
         {
             SetTextBoxText(CombatPromptTextBox, combatPrompt);
@@ -556,7 +563,7 @@ public partial class MainWindow : Window
 
     private void SetStatusHint(string message, int stickySeconds = 0)
     {
-        FooterHintTextBlock.Text = message;
+        StatusHintTextBlock.Text = message;
         _statusHintStickyUntilUtc = stickySeconds > 0
             ? DateTime.UtcNow.AddSeconds(stickySeconds)
             : DateTime.MinValue;
@@ -564,9 +571,9 @@ public partial class MainWindow : Window
 
     private void SetStatusHintSilently(string message)
     {
-        if (!string.Equals(FooterHintTextBlock.Text, message, StringComparison.Ordinal))
+        if (!string.Equals(StatusHintTextBlock.Text, message, StringComparison.Ordinal))
         {
-            FooterHintTextBlock.Text = message;
+            StatusHintTextBlock.Text = message;
         }
     }
 
@@ -721,33 +728,7 @@ public partial class MainWindow : Window
 
     private static bool CanStartFromSnapshot(AgentSnapshot? snapshot)
     {
-        if (snapshot == null)
-        {
-            return false;
-        }
-
-        if (snapshot.can_start_automation)
-        {
-            return true;
-        }
-
-        if (string.Equals(snapshot.session_phase, "run", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return snapshot.current_screen switch
-        {
-            "COMBAT" => true,
-            "MAP" => true,
-            "EVENT" => true,
-            "REST" => true,
-            "SHOP" => true,
-            "CHEST" => true,
-            "REWARD" => true,
-            "CARD_SELECTION" => true,
-            _ => false
-        };
+        return snapshot?.can_start_automation == true;
     }
 
     private static bool IsWaitingForRun(AgentSnapshot snapshot)
@@ -831,8 +812,26 @@ public partial class MainWindow : Window
             "run" => "对局中",
             "menu" => "菜单阶段",
             "lobby" => "大厅阶段",
+            "character_select" => "角色选择",
+            "multiplayer_lobby" => "多人大厅",
             _ => string.IsNullOrWhiteSpace(value) ? "未知阶段" : value
         };
+    }
+
+    private string ResolvePromptOwnerText(AgentSnapshot? snapshot)
+    {
+        if (!string.IsNullOrWhiteSpace(GetPromptKey(snapshot)))
+        {
+            return $"正在编辑：{ResolveCharacterDisplayName(snapshot!)} 的专属提示词";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentPromptKey))
+        {
+            var ownerName = string.IsNullOrWhiteSpace(_currentPromptOwnerName) ? _currentPromptKey : _currentPromptOwnerName;
+            return $"当前未检测到角色，继续编辑：{ownerName} 的专属提示词";
+        }
+
+        return "未检测到当前角色提示词。";
     }
 
     private static SolidColorBrush CreateBrush(string hex)
@@ -840,6 +839,21 @@ public partial class MainWindow : Window
         var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
         brush.Freeze();
         return brush;
+    }
+
+    private static void FocusPromptEditor(TextBox textBox)
+    {
+        if (!textBox.IsEnabled)
+        {
+            return;
+        }
+
+        textBox.Focus();
+        Keyboard.Focus(textBox);
+        if (textBox.CaretIndex < 0)
+        {
+            textBox.CaretIndex = textBox.Text.Length;
+        }
     }
 
     private static AgentConfig NormalizeConfig(AgentConfig config)

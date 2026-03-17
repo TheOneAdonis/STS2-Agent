@@ -23,6 +23,22 @@ func _initialize() -> void:
 		quit(1)
 		return
 
+	var mod_root_name := source_manifest.get_base_dir().get_file()
+	var manifest_file := FileAccess.open(source_manifest, FileAccess.READ)
+	if manifest_file != null:
+		var manifest_payload = JSON.parse_string(manifest_file.get_as_text())
+		if manifest_payload is Dictionary:
+			var manifest_pck_name = str(manifest_payload.get("pck_name", "")).strip_edges()
+			if not manifest_pck_name.is_empty():
+				mod_root_name = manifest_pck_name
+	var mod_image_path := source_manifest.get_base_dir().path_join("mod_image.png")
+	if FileAccess.file_exists(mod_image_path):
+		add_error = packer.add_file("res://%s/mod_image.png" % mod_root_name, mod_image_path)
+		if add_error != OK:
+			push_error("Failed to add mod_image.png: %s" % add_error)
+			quit(1)
+			return
+
 	var flush_error := packer.flush()
 	if flush_error != OK:
 		push_error("Failed to finalize PCK: %s" % flush_error)
