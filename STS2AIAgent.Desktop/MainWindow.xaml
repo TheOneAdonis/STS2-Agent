@@ -244,7 +244,7 @@
                       Padding="14,8">
                 <TextBlock x:Name="VersionTextBlock"
                            Style="{StaticResource CaptionTextStyle}"
-                           Text="v0.14" />
+                           Text="v0.15" />
               </Border>
               <Button Background="{StaticResource SurfaceBrush}" Style="{StaticResource TrafficButtonStyle}" Click="MinimizeButton_Click">
                 <Path Width="10" Height="10" Stretch="Uniform" Fill="{StaticResource TitleBrush}" Data="M3,11H21V13H3Z" />
