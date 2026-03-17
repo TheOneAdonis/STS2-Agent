@@ -1,6 +1,6 @@
 param(
     [string]$ProjectRoot = "C:/Users/chart/Documents/project/sp",
-    [int]$HostApiPort = 8080,
+    [int]$HostApiPort = 8081,
     [int]$ClientApiPort = 8081,
     [switch]$KeepGamesRunning
 )
@@ -376,3 +376,4 @@ finally {
         Stop-Games
     }
 }
+

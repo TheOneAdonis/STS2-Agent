@@ -3,7 +3,7 @@ param(
     [int]$Attempts = 40,
     [int]$DelaySeconds = 2,
     [switch]$EnableDebugActions,
-    [int]$ApiPort = 8080,
+    [int]$ApiPort = 8081,
     [switch]$KeepExistingProcesses
 )
 
@@ -91,3 +91,4 @@ Wait-ForHealth -MaxAttempts $Attempts -SleepSeconds $DelaySeconds -Process $proc
     base_url = $baseUrl
     health = "ready"
 } | ConvertTo-Json -Compress
+

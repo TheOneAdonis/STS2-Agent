@@ -92,7 +92,7 @@ try {
         Start-Sleep -Seconds $DelaySeconds
 
         try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8080/health" -UseBasicParsing -TimeoutSec 2
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8081/health" -UseBasicParsing -TimeoutSec 2
             $health = $resp.Content
             break
         } catch {
@@ -104,8 +104,8 @@ try {
     }
 
     if ($health -and $DeepCheck) {
-        $stateCheck = Invoke-JsonEndpoint -Uri "http://127.0.0.1:8080/state"
-        $actionsCheck = Invoke-JsonEndpoint -Uri "http://127.0.0.1:8080/actions/available"
+        $stateCheck = Invoke-JsonEndpoint -Uri "http://127.0.0.1:8081/state"
+        $actionsCheck = Invoke-JsonEndpoint -Uri "http://127.0.0.1:8081/actions/available"
     }
 }
 finally {
@@ -135,3 +135,4 @@ if ($health) {
 
     "NO_HEALTH_RESPONSE"
 }
+

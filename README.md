@@ -1,67 +1,36 @@
-
-
 https://github.com/user-attachments/assets/89353468-a299-4315-9516-e520bcbfbd4b
 
 # 创造性AI
 
-`创造性AI` 是 `STS2 AI Agent` 的实验性共存分支，由三部分组成：
+`创造性AI` 是 `STS2 AI Agent` 的实验性共存分支，当前只保留两部分：
 
-- `CreativeAI` Mod：把游戏状态和操作暴露为本地 HTTP API。
-- `CreativeAI.Desktop`：游戏内托管桌面控制台，会随 Mod 自动拉起。
-- `mcp_server`：把本地 HTTP API 包装成 MCP Server，供支持 MCP 的客户端直接调用。
+- `CreativeAI` Mod：在游戏内提供 AI 托管、状态采集和本地 HTTP 服务
+- `CreativeAI.Desktop`：桌面控制台，用于配置、启动、停止和编辑提示词
 
-## 分支说明
+这个分支已经移除了 `mcp_server`，因此不再面向 MCP 客户端使用。
 
-当前分支 `codex/in-game-agent-panel-exp` 对应实验版 `创造性AI`，默认与原版主线并存：
+## 分支定位
+
+当前分支 `codex/in-game-agent-panel-exp` 的目标是：
+
+- 与原版 `STS2 AI Agent` 共存
+- 独立安装、独立端口、独立本地配置目录
+- 专注于游戏内托管和桌面控制台
+
+当前实验分支默认使用：
 
 - Mod 目录：`mods/CreativeAI/`
-- Mod 文件名：`CreativeAI.dll` / `CreativeAI.pck` / `CreativeAI.json`
-- 桌面伴生程序：`mods/CreativeAI/desktop/CreativeAI.Desktop.exe`
-- 默认健康检查地址：`http://127.0.0.1:8081/health`
+- Mod 文件：`CreativeAI.dll`、`CreativeAI.pck`、`CreativeAI.json`
+- 桌面程序：`mods/CreativeAI/desktop/CreativeAI.Desktop.exe`
+- 本地服务：`http://127.0.0.1:8081/`
+- 健康检查：`http://127.0.0.1:8081/health`
 - 本地运行目录：`%LOCALAPPDATA%\\creative-ai\\`
 
-如果你只想使用原版 `STS2 AI Agent`，请切回 `master` 分支；原版仍使用 `STS2AIAgent` 和 `8080`。
+如果你想使用原版 `STS2 AI Agent`，请切回 `master` 分支；原版仍使用 `STS2AIAgent` 和 `8080`。
 
+## 安装后目录
 
-## 构建安装后会得到什么
-
-当前实验分支在构建并安装后，游戏目录中通常会出现这些文件：
-
-```text
-mod/
-  CreativeAI.dll
-  CreativeAI.pck
-  CreativeAI.json
-  desktop/
-    CreativeAI.Desktop.exe
-mcp_server/
-  pyproject.toml
-  uv.lock
-  src/sts2_mcp/...
-scripts/
-  start-mcp-stdio.ps1
-  start-mcp-network.ps1
-README.md
-```
-
-如果你只想安装 Mod，只需要 `mod/` 目录里的这些文件。
-
-## 快速开始
-
-### 1. 安装 Mod
-
-1. 下载并解压 release 压缩包。
-2. 打开你的游戏目录。
-   Steam 默认路径通常是：
-
-   ```text
-   C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2
-   ```
-
-3. 如果游戏目录下没有 `mods` 文件夹，就新建一个。
-4. 在游戏目录下新建 `mods/CreativeAI/`，再把 `mod/` 目录里的文件完整复制进去；如果你直接在仓库里构建，也可以运行 `scripts/build-mod.ps1` 自动安装。
-
-最终结构应当类似：
+构建并安装后，游戏目录通常会出现：
 
 ```text
 Slay the Spire 2/
@@ -76,181 +45,66 @@ Slay the Spire 2/
         CreativeAI.Desktop.exe
 ```
 
+## 快速开始
+
+### 1. 安装 Mod
+
+如果你直接使用已经构建好的文件，只需要把整个 `CreativeAI` 文件夹放进游戏目录的 `mods/` 中。
+
 ### 2. 启动游戏
 
-先正常启动一次游戏，让 Mod 随游戏一起加载。
+启动游戏后，`CreativeAI` 会在后台启动本地服务，并尝试拉起桌面控制台。
 
-如果你想确认 Mod 是否已经生效，可以在浏览器里打开：
+如果你想确认 Mod 是否已经生效，可以打开：
 
 ```text
 http://127.0.0.1:8081/health
 ```
 
-能看到返回结果，就说明 Mod 已成功启动。
+### 3. 使用桌面控制台
 
-### 3. 启动 MCP
+桌面控制台主要用于：
 
-#### 推荐方式：stdio MCP
+- 配置 Base URL、模型和 API Key
+- 编辑当前角色的战斗提示词 / 爬塔提示词
+- 启动或停止 AI 托管
+- 观察当前角色、当前界面、当前计划和最近动作
 
-这是最适合接入桌面 AI 客户端的方式。
-
-先准备环境：
-
-1. 安装 Python 3.11 或更高版本。
-2. 安装 `uv`。
-
-安装 `uv` 的常见方式：
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-然后在 release 解压目录中运行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ".\scripts\start-mcp-stdio.ps1"
-```
-
-脚本会自动：
-
-- 进入 `mcp_server/`
-- 执行 `uv sync`
-- 启动 `sts2-mcp-server`
-
-如果你更喜欢手动启动，也可以执行：
-
-```powershell
-cd ".\mcp_server"
-uv sync
-uv run sts2-mcp-server
-```
-
-#### 可选方式：HTTP MCP
-
-如果你的 MCP 客户端更适合通过网络地址连接，可以启动 HTTP 版本：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ".\scripts\start-mcp-network.ps1"
-```
-
-默认监听地址：
+实验分支的提示词和日志默认保存在：
 
 ```text
-http://127.0.0.1:8765/mcp
+%LOCALAPPDATA%\creative-ai\
 ```
 
-## MCP 客户端如何接
+## 从源码构建
 
-如果你的客户端支持 `stdio` MCP，一般只需要把启动命令指向：
+如果你在仓库中直接构建，可使用：
 
-```text
-uv run sts2-mcp-server
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\scripts\build-mod.ps1" -Configuration Debug -GameRoot "D:\SteamLibrary\steamapps\common\Slay the Spire 2" -GodotExe "D:\godot\Godot_v4.5.1-stable_win64.exe\Godot_v4.5.1-stable_win64_console.exe"
 ```
 
-工作目录设置为 release 包中的 `mcp_server/` 即可。
+构建脚本会：
 
-本实验分支如果要连接 `创造性AI`，记得把 `STS2_API_BASE_URL` 改成 `http://127.0.0.1:8081`。
+- 编译 `CreativeAI.dll`
+- 编译 `CreativeAI.Desktop.exe`
+- 生成 `CreativeAI.pck`
+- 安装到游戏目录 `mods/CreativeAI/`
 
-如果你的客户端支持 HTTP MCP，地址填：
+## 使用影响
 
-```text
-http://127.0.0.1:8765/mcp
-```
+移除 `mcp_server` 后，不影响以下功能：
 
-## 本次改动
+- 游戏内 AI 托管
+- 桌面控制台启动与使用
+- 提示词编辑
+- 本地知识库读写
+- 与原版主线并存安装
 
-本轮改动重点是给上层 agent 提供“主 Agent 负责路线 / 房间决策，战斗 Agent 负责局内操作”的分层接法，而不是继续扩底层动作。
+会失去的能力只有：
 
-已完成：
-
-- MCP 新增 `layered` profile，保持 `guided` 紧凑的同时，额外暴露分层编排工具。
-- 新增 planner / combat handoff 工具：
-  - `create_planner_handoff`
-  - `create_combat_handoff`
-  - `complete_combat_handoff`
-  - `complete_event_handoff`
-- 新增运行时知识库支持：
-  - 战斗知识按 `enemy_id_xcount` 聚合落盘
-  - 事件知识按 `event_id` 落盘
-  - 支持战斗中写观察，也支持战斗结束后按 `combat_key` 回写总结
-- `get_planner_context` / `get_combat_context` / `create_*_handoff` 已改成纯读，不会再因为读取上下文自动创建知识文件。
-- 路线上下文已改成紧凑摘要，不再展开每个候选节点的全部完整后续路径。
-- `GET /state` 的 `run` payload 新增 `floor` 字段，方便知识归档和上层决策压缩。
-- MCP profile 校验脚本已同步覆盖 `layered`。
-
-当前设计约束：
-
-- 运行时知识库默认写入用户级运行时目录，而不是源码仓库目录
-  - Linux: `${XDG_STATE_HOME:-~/.local/state}/sts2-ai-agent/knowledge/`
-  - Windows: `%LOCALAPPDATA%\\sts2-ai-agent\\knowledge\\`
-- 组合怪文件名采用 Windows 可用格式，例如 `cultist_x2+slime_large_x1.md`
-- 当前还没有 chapter / act 字段时，知识先归档到 `global/`
-
-详细工具和交接说明见：
-
-- `mcp_server/README.md`
-
-## 测试状态
-
-### 已完成测试
-
-这些测试是在当前 Linux CLI 环境中完成的：
-
-- Python 侧语法检查通过：
-  - `sts2_mcp/client.py`
-  - `sts2_mcp/server.py`
-  - `sts2_mcp/network_server.py`
-  - `sts2_mcp/knowledge.py`
-  - `sts2_mcp/handoff.py`
-- 在本地虚拟环境中安装 `fastmcp` 后，确认 `guided` profile 仍只暴露：
-  - `health_check`
-  - `get_game_state`
-  - `get_available_actions`
-  - `act`
-- 确认 `layered` profile 额外暴露：
-  - `get_planner_context`
-  - `create_planner_handoff`
-  - `get_combat_context`
-  - `create_combat_handoff`
-  - `complete_combat_handoff`
-  - `append_combat_knowledge`
-  - `append_event_knowledge`
-  - `complete_event_handoff`
-- 用模拟 state 跑通了：
-  - planner handoff 生成
-  - combat handoff 生成
-  - combat result 回写知识库
-  - event result 回写知识库
-- 用模拟 state 验证了纯读工具不会自动创建知识文件
-- 用模拟 state 验证了路线上下文现在只返回紧凑摘要，不再返回完整路径展开
-- 确认运行时知识文件会正确创建，例如：
-  - `combat/global/groups/cultist_x2.md`
-  - `events/global/cleric.md`
-
-### 未完成测试
-
-这些测试我当前无法在本环境完成，仍需要原作者或有游戏环境的人实机验证：
-
-- `CreativeAI` C# Mod 编译
-  - 当前环境没有 `dotnet`
-- 游戏内实机验证 `/state` 新增的 `run.floor`
-- 实机验证 `layered` profile 通过真实 MCP 客户端调用
-- 主 Agent -> 战斗 Agent -> 主 Agent 的完整 live handoff 流程
-- 战斗结束后用真实 `combat_key` 回写知识库，再由下一次 planner handoff 读取压缩总结
-- 事件结束后 `complete_event_handoff` 与真实事件链路对齐
-- Windows 游戏目录下运行时知识库路径、文件命名和权限检查
-- 主 / 副 Agent 在真实长局中对 token 开销的实际改善幅度
-
-### 建议原作者优先验证
-
-如果原作者准备接手测试，建议优先按这个顺序验证：
-
-1. `scripts/test-mcp-tool-profile.ps1`
-2. `/health`、`/state`、`/actions/available`
-3. `run.floor` 是否稳定出现在 live state
-4. `layered` profile 下的 `create_combat_handoff`
-5. 一场真实战斗后的 `complete_combat_handoff`
-6. 一个真实事件后的 `complete_event_handoff`
+- 通过 MCP 客户端把游戏当成一个 MCP 工具来调用
+- 旧的 `start-mcp-stdio.ps1` / `start-mcp-network.ps1` 这类启动方式
 
 ## 常见问题
 
@@ -258,28 +112,22 @@ http://127.0.0.1:8765/mcp
 
 优先检查：
 
-1. 游戏是否已经启动。
-2. `CreativeAI` 目录是否完整放进了 `mods/`，并且里面至少有 `CreativeAI.dll` 和 `CreativeAI.pck`。
-3. 文件名是否被系统自动改成了带 `(1)` 的副本。
-4. 游戏目录是否放错了，例如放进了仓库目录而不是 Steam 游戏目录。
+1. 游戏是否已经启动
+2. `mods/CreativeAI/` 是否完整存在
+3. `CreativeAI.dll` 和 `CreativeAI.pck` 是否都在 `mods/CreativeAI/` 下
+4. 文件名是否被系统自动改成了带 `(1)` 的副本
 
-### MCP 能启动，但读不到游戏状态
+### 桌面控制台没有弹出
 
-这通常表示 MCP 正常，但游戏里的 Mod 没有连上。请先确认：
+优先检查：
 
-1. 游戏正在运行。
-2. `http://127.0.0.1:8081/health` 可访问。
-3. MCP 使用的接口地址已改成 `http://127.0.0.1:8081`。
-
-### 要不要开启 debug 动作
-
-正式使用不需要。
-
-`run_console_command` 这类调试工具默认关闭，发布建议保持关闭。
-
+1. `mods/CreativeAI/desktop/CreativeAI.Desktop.exe` 是否存在
+2. 是否被安全软件拦截
+3. 是否已经有一个同名桌面进程在运行
 
 ## 相关目录
 
 - `STS2AIAgent/`：游戏 Mod 源码
-- `mcp_server/`：MCP Server 源码
-- `scripts/`：构建、验证和启动脚本
+- `STS2AIAgent.Desktop/`：桌面控制台源码
+- `scripts/build-mod.ps1`：构建并安装实验分支
+- `scripts/package-release.ps1`：打包实验分支发布物

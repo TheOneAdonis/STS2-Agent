@@ -321,7 +321,7 @@ function Resolve-PythonExecutable {
     }
 
     $resolvedRepoRoot = Resolve-RepoRoot -InputRoot $RepoRoot
-    $venvPython = Join-Path $resolvedRepoRoot "mcp_server\.venv\Scripts\python.exe"
+    $venvPython = Join-Path $resolvedRepoRoot ".venv\Scripts\python.exe"
     if (Test-Path $venvPython) {
         return $venvPython
     }
@@ -349,7 +349,7 @@ function Resolve-PythonExecutable {
         }
     }
 
-    throw "Unable to locate Python. Install Python 3.11+ or create mcp_server\\.venv\\Scripts\\python.exe."
+    throw "Unable to locate Python. Install Python 3.11+ or create .venv\\Scripts\\python.exe."
 }
 
 function Set-RepoToolingEnvironment {

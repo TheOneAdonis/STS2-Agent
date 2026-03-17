@@ -63,10 +63,7 @@ $stagingModDir = Join-Path $ProjectRoot "build/mods/CreativeAI"
 $releaseDir = Get-UniquePath -BasePath (Join-Path $OutputRoot $releaseBaseName)
 $zipPath = Get-UniquePath -BasePath (Join-Path $OutputRoot $releaseBaseName) -Extension ".zip"
 
-$modOutputDir = Join-Path $releaseDir "mod"
-$mcpOutputDir = Join-Path $releaseDir "mcp_server"
-$scriptOutputDir = Join-Path $releaseDir "scripts"
-$mcpSourceDir = Join-Path $ProjectRoot "mcp_server"
+$modOutputDir = Join-Path $releaseDir "mod/CreativeAI"
 
 Write-Host "[package-release] Building release mod artifacts..."
 powershell -ExecutionPolicy Bypass -File $buildScript -ProjectRoot $ProjectRoot -Configuration $Configuration | Out-Host
@@ -77,30 +74,10 @@ if ($LASTEXITCODE -ne 0) {
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 New-Item -ItemType Directory -Force -Path $modOutputDir | Out-Null
-New-Item -ItemType Directory -Force -Path $mcpOutputDir | Out-Null
-New-Item -ItemType Directory -Force -Path $scriptOutputDir | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $mcpOutputDir "src") | Out-Null
 
-Copy-Item -Path (Join-Path $stagingModDir "CreativeAI.dll") -Destination (Join-Path $modOutputDir "CreativeAI.dll") -Force
-Copy-Item -Path (Join-Path $stagingModDir "CreativeAI.pck") -Destination (Join-Path $modOutputDir "CreativeAI.pck") -Force
+Copy-Item -Recurse -Force (Join-Path $stagingModDir "*") $modOutputDir
 
 Copy-Item -Path (Join-Path $ProjectRoot "README.md") -Destination (Join-Path $releaseDir "README.md") -Force
-Copy-Item -Path (Join-Path $mcpSourceDir "README.md") -Destination (Join-Path $mcpOutputDir "README.md") -Force
-Copy-Item -Path (Join-Path $mcpSourceDir "pyproject.toml") -Destination (Join-Path $mcpOutputDir "pyproject.toml") -Force
-Copy-Item -Path (Join-Path $mcpSourceDir "uv.lock") -Destination (Join-Path $mcpOutputDir "uv.lock") -Force
-Get-ChildItem -Path (Join-Path $mcpSourceDir "src/sts2_mcp") -Recurse -File |
-    Where-Object { $_.FullName -notmatch "\\__pycache__\\" } |
-    ForEach-Object {
-        $relativePath = $_.FullName.Substring($mcpSourceDir.Length + 1)
-        $destinationPath = Join-Path $mcpOutputDir $relativePath
-        $destinationDir = Split-Path -Parent $destinationPath
-
-        New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-        Copy-Item -Path $_.FullName -Destination $destinationPath -Force
-    }
-
-Copy-Item -Path (Join-Path $ProjectRoot "scripts/start-mcp-stdio.ps1") -Destination (Join-Path $scriptOutputDir "start-mcp-stdio.ps1") -Force
-Copy-Item -Path (Join-Path $ProjectRoot "scripts/start-mcp-network.ps1") -Destination (Join-Path $scriptOutputDir "start-mcp-network.ps1") -Force
 
 Compress-Archive -Path (Join-Path $releaseDir "*") -DestinationPath $zipPath
 

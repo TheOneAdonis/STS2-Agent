@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://127.0.0.1:8080",
+    [string]$BaseUrl = "http://127.0.0.1:8081",
     [int]$TimeoutSec = 5,
     [int]$PollAttempts = 60,
     [int]$PollDelayMs = 200
@@ -216,3 +216,4 @@ if ($zeroCostMatches.Count -eq 0) {
     initial_screen = $selectionState.screen
     selection_count = $selectionCards.Count
 } | ConvertTo-Json -Depth 5
+

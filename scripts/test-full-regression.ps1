@@ -26,7 +26,7 @@ function Invoke-ApiJson {
         $Body = $null
     )
 
-    $uri = "http://127.0.0.1:8080" + $Path
+    $uri = "http://127.0.0.1:8081" + $Path
 
     try {
         if ($null -eq $Body) {
@@ -239,10 +239,6 @@ try {
     }
     Invoke-RepoScript -Name "build mod" -FileName "build-mod.ps1"
     Invoke-RepoScript -Name "mod load deep check" -FileName "test-mod-load.ps1" -Arguments @("-DeepCheck")
-    Invoke-RepoScript -Name "debug console gating (disabled)" -FileName "test-debug-console-gating.ps1"
-    Invoke-RepoScript -Name "debug console gating (enabled)" -FileName "test-debug-console-gating.ps1" -Arguments @("-EnableDebugActions")
-    Invoke-RepoScript -Name "mcp tool profile" -FileName "test-mcp-tool-profile.ps1"
-
     Start-DebugSession -StepName "start debug session for main-menu lifecycle"
     Ensure-ActiveRunMainMenu
     Invoke-RepoScript -Name "main-menu active-run lifecycle" -FileName "test-main-menu-active-run.ps1"
@@ -292,3 +288,4 @@ finally {
 if ($failed) {
     throw $failureMessage
 }
+

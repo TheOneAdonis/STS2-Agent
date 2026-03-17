@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://127.0.0.1:8080",
+    [string]$BaseUrl = "http://127.0.0.1:8081",
     [int]$TimeoutSec = 15,
     [int]$RequestRetries = 3,
     [int]$RetryDelayMs = 500,
@@ -201,3 +201,4 @@ $finalMenuState = Wait-ForState -Description "MAIN_MENU after game over" -Condit
     game_over_actions = @($gameOverState.available_actions)
     final_menu_actions = @($finalMenuState.available_actions)
 } | ConvertTo-Json -Depth 6
+

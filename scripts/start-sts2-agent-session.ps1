@@ -2,7 +2,7 @@ param(
     [string]$Configuration = "Debug",
     [switch]$LaunchDesktopUi = $true,
     [switch]$EnableDebugActions,
-    [int]$ApiPort = 8080,
+    [int]$ApiPort = 8081,
     [switch]$KeepExistingProcesses
 )
 
@@ -24,3 +24,4 @@ if ($LaunchDesktopUi) {
     -EnableDebugActions:$EnableDebugActions `
     -ApiPort $ApiPort `
     -KeepExistingProcesses:$KeepExistingProcesses
+
