@@ -2,22 +2,38 @@
 
 https://github.com/user-attachments/assets/89353468-a299-4315-9516-e520bcbfbd4b
 
-# STS2 AI Agent
+# 创造性AI
 
-`STS2 AI Agent` 由两部分组成：
+`创造性AI` 是 `STS2 AI Agent` 的实验性共存分支，由三部分组成：
 
-- `STS2AIAgent` Mod：把游戏状态和操作暴露为本地 HTTP API。
+- `CreativeAI` Mod：把游戏状态和操作暴露为本地 HTTP API。
+- `CreativeAI.Desktop`：游戏内托管桌面控制台，会随 Mod 自动拉起。
 - `mcp_server`：把本地 HTTP API 包装成 MCP Server，供支持 MCP 的客户端直接调用。
 
+## 分支说明
 
-## 你会下载到什么
+当前分支 `codex/in-game-agent-panel-exp` 对应实验版 `创造性AI`，默认与原版主线并存：
 
-发布包内通常包含这些目录：
+- Mod 目录：`mods/CreativeAI/`
+- Mod 文件名：`CreativeAI.dll` / `CreativeAI.pck` / `CreativeAI.json`
+- 桌面伴生程序：`mods/CreativeAI/desktop/CreativeAI.Desktop.exe`
+- 默认健康检查地址：`http://127.0.0.1:8081/health`
+- 本地运行目录：`%LOCALAPPDATA%\\creative-ai\\`
+
+如果你只想使用原版 `STS2 AI Agent`，请切回 `master` 分支；原版仍使用 `STS2AIAgent` 和 `8080`。
+
+
+## 构建安装后会得到什么
+
+当前实验分支在构建并安装后，游戏目录中通常会出现这些文件：
 
 ```text
 mod/
-  STS2AIAgent.dll
-  STS2AIAgent.pck
+  CreativeAI.dll
+  CreativeAI.pck
+  CreativeAI.json
+  desktop/
+    CreativeAI.Desktop.exe
 mcp_server/
   pyproject.toml
   uv.lock
@@ -28,7 +44,7 @@ scripts/
 README.md
 ```
 
-如果你只想安装 Mod，只需要 `mod/` 目录里的两个文件。
+如果你只想安装 Mod，只需要 `mod/` 目录里的这些文件。
 
 ## 快速开始
 
@@ -43,15 +59,21 @@ README.md
    ```
 
 3. 如果游戏目录下没有 `mods` 文件夹，就新建一个。
-4. 把 `mod/STS2AIAgent.dll` 和 `mod/STS2AIAgent.pck` 复制到游戏目录的 `mods/` 中。
+4. 在游戏目录下新建 `mods/CreativeAI/`，再把 `mod/` 目录里的文件完整复制进去；如果你直接在仓库里构建，也可以运行 `scripts/build-mod.ps1` 自动安装。
 
 最终结构应当类似：
 
 ```text
 Slay the Spire 2/
   mods/
-    STS2AIAgent.dll
-    STS2AIAgent.pck
+    STS2AIAgent/
+      ...
+    CreativeAI/
+      CreativeAI.dll
+      CreativeAI.pck
+      CreativeAI.json
+      desktop/
+        CreativeAI.Desktop.exe
 ```
 
 ### 2. 启动游戏
@@ -61,7 +83,7 @@ Slay the Spire 2/
 如果你想确认 Mod 是否已经生效，可以在浏览器里打开：
 
 ```text
-http://127.0.0.1:8080/health
+http://127.0.0.1:8081/health
 ```
 
 能看到返回结果，就说明 Mod 已成功启动。
@@ -127,6 +149,8 @@ uv run sts2-mcp-server
 
 工作目录设置为 release 包中的 `mcp_server/` 即可。
 
+本实验分支如果要连接 `创造性AI`，记得把 `STS2_API_BASE_URL` 改成 `http://127.0.0.1:8081`。
+
 如果你的客户端支持 HTTP MCP，地址填：
 
 ```text
@@ -149,12 +173,16 @@ http://127.0.0.1:8765/mcp
   - 战斗知识按 `enemy_id_xcount` 聚合落盘
   - 事件知识按 `event_id` 落盘
   - 支持战斗中写观察，也支持战斗结束后按 `combat_key` 回写总结
+- `get_planner_context` / `get_combat_context` / `create_*_handoff` 已改成纯读，不会再因为读取上下文自动创建知识文件。
+- 路线上下文已改成紧凑摘要，不再展开每个候选节点的全部完整后续路径。
 - `GET /state` 的 `run` payload 新增 `floor` 字段，方便知识归档和上层决策压缩。
 - MCP profile 校验脚本已同步覆盖 `layered`。
 
 当前设计约束：
 
-- 运行时知识库默认写入仓库下的 `agent_knowledge/`
+- 运行时知识库默认写入用户级运行时目录，而不是源码仓库目录
+  - Linux: `${XDG_STATE_HOME:-~/.local/state}/sts2-ai-agent/knowledge/`
+  - Windows: `%LOCALAPPDATA%\\sts2-ai-agent\\knowledge\\`
 - 组合怪文件名采用 Windows 可用格式，例如 `cultist_x2+slime_large_x1.md`
 - 当前还没有 chapter / act 字段时，知识先归档到 `global/`
 
@@ -193,6 +221,8 @@ http://127.0.0.1:8765/mcp
   - combat handoff 生成
   - combat result 回写知识库
   - event result 回写知识库
+- 用模拟 state 验证了纯读工具不会自动创建知识文件
+- 用模拟 state 验证了路线上下文现在只返回紧凑摘要，不再返回完整路径展开
 - 确认运行时知识文件会正确创建，例如：
   - `combat/global/groups/cultist_x2.md`
   - `events/global/cleric.md`
@@ -201,7 +231,7 @@ http://127.0.0.1:8765/mcp
 
 这些测试我当前无法在本环境完成，仍需要原作者或有游戏环境的人实机验证：
 
-- `STS2AIAgent` C# Mod 编译
+- `CreativeAI` C# Mod 编译
   - 当前环境没有 `dotnet`
 - 游戏内实机验证 `/state` 新增的 `run.floor`
 - 实机验证 `layered` profile 通过真实 MCP 客户端调用
@@ -209,6 +239,7 @@ http://127.0.0.1:8765/mcp
 - 战斗结束后用真实 `combat_key` 回写知识库，再由下一次 planner handoff 读取压缩总结
 - 事件结束后 `complete_event_handoff` 与真实事件链路对齐
 - Windows 游戏目录下运行时知识库路径、文件命名和权限检查
+- 主 / 副 Agent 在真实长局中对 token 开销的实际改善幅度
 
 ### 建议原作者优先验证
 
@@ -223,12 +254,12 @@ http://127.0.0.1:8765/mcp
 
 ## 常见问题
 
-### 看不到 `http://127.0.0.1:8080/health`
+### 看不到 `http://127.0.0.1:8081/health`
 
 优先检查：
 
 1. 游戏是否已经启动。
-2. `STS2AIAgent.dll` 和 `STS2AIAgent.pck` 是否都放进了 `mods/`。
+2. `CreativeAI` 目录是否完整放进了 `mods/`，并且里面至少有 `CreativeAI.dll` 和 `CreativeAI.pck`。
 3. 文件名是否被系统自动改成了带 `(1)` 的副本。
 4. 游戏目录是否放错了，例如放进了仓库目录而不是 Steam 游戏目录。
 
@@ -237,8 +268,8 @@ http://127.0.0.1:8765/mcp
 这通常表示 MCP 正常，但游戏里的 Mod 没有连上。请先确认：
 
 1. 游戏正在运行。
-2. `http://127.0.0.1:8080/health` 可访问。
-3. MCP 使用的接口地址仍然是默认值 `http://127.0.0.1:8080`。
+2. `http://127.0.0.1:8081/health` 可访问。
+3. MCP 使用的接口地址已改成 `http://127.0.0.1:8081`。
 
 ### 要不要开启 debug 动作
 
