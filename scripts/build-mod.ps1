@@ -28,10 +28,12 @@ $installedModDir = Join-Path $modsDir $modName
 $installedDesktopDir = Join-Path $installedModDir "desktop"
 $manifestSource = Join-Path $ProjectRoot "STS2AIAgent/mod_manifest.json"
 $externalManifestSource = Join-Path $ProjectRoot "STS2AIAgent/$modName.json"
+$defaultConfigSource = Join-Path $ProjectRoot "STS2AIAgent/in-game-agent.json"
 $modImageSource = Join-Path $ProjectRoot "STS2AIAgent/mod_image.png"
 $dllSource = Join-Path $buildOutputDir "$modName.dll"
 $pckOutput = Join-Path $stagingDir "$modName.pck"
 $dllTarget = Join-Path $stagingDir "$modName.dll"
+$defaultConfigTarget = Join-Path $stagingDir "in-game-agent.json"
 $builderProjectDir = Join-Path $ProjectRoot "tools/pck_builder"
 $builderScript = Join-Path $builderProjectDir "build_pck.gd"
 
@@ -58,6 +60,9 @@ if (-not (Test-Path $dllSource)) {
 
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
 Copy-Item -Force $dllSource $dllTarget
+if (Test-Path $defaultConfigSource) {
+    Copy-Item -Force $defaultConfigSource $defaultConfigTarget
+}
 New-Item -ItemType Directory -Force -Path $desktopStagingDir | Out-Null
 Copy-Item -Recurse -Force (Join-Path $desktopOutputDir "*") $desktopStagingDir
 
@@ -96,6 +101,9 @@ if (Test-Path $staleBaseLibDir) {
 
 Copy-Item -Force $dllTarget (Join-Path $installedModDir "$modName.dll")
 Copy-Item -Force $pckOutput (Join-Path $installedModDir "$modName.pck")
+if (Test-Path $defaultConfigTarget) {
+    Copy-Item -Force $defaultConfigTarget (Join-Path $installedModDir "in-game-agent.json")
+}
 if (Test-Path $installedDesktopDir) {
     Remove-Item -Recurse -Force $installedDesktopDir
 }
@@ -111,6 +119,9 @@ Write-Host "[build-mod] Done."
 Write-Host "[build-mod] Installed files:"
 Write-Host "  $(Join-Path $installedModDir "$modName.dll")"
 Write-Host "  $(Join-Path $installedModDir "$modName.pck")"
+if (Test-Path (Join-Path $installedModDir "in-game-agent.json")) {
+    Write-Host "  $(Join-Path $installedModDir "in-game-agent.json")"
+}
 Write-Host "  $(Join-Path $installedDesktopDir "CreativeAI.Desktop.exe")"
 if (Test-Path (Join-Path $installedModDir "$modName.json")) {
     Write-Host "  $(Join-Path $installedModDir "$modName.json")"

@@ -2,41 +2,33 @@ https://github.com/user-attachments/assets/89353468-a299-4315-9516-e520bcbfbd4b
 
 # 创造性AI
 
-`创造性AI` 是 `STS2 AI Agent` 的实验性共存分支，当前只保留两部分：
+`创造性AI` 是一个面向《Slay the Spire 2》的本地 AI 托管方案，包含游戏内 Mod 与桌面控制台两部分：
 
-- `CreativeAI` Mod：在游戏内提供 AI 托管、状态采集和本地 HTTP 服务
-- `CreativeAI.Desktop`：桌面控制台，用于配置、启动、停止和编辑提示词
+- `CreativeAI` Mod：负责读取游戏状态、暴露本地服务、执行 AI 决策
+- `CreativeAI.Desktop`：负责配置模型、编辑提示词、启动或停止托管、查看运行状态
 
-这个分支已经移除了 `mcp_server`，因此不再面向 MCP 客户端使用。
+当前版本：`0.15.1`
 
-## 分支定位
+## 它能做什么
 
-当前分支 `codex/in-game-agent-panel-exp` 的目标是：
+`创造性AI` 的目标不是只做一次性问答，而是持续接管一局爬塔流程。
 
-- 与原版 `STS2 AI Agent` 共存
-- 独立安装、独立端口、独立本地配置目录
-- 专注于游戏内托管和桌面控制台
+它可以：
 
-当前实验分支默认使用：
+- 在游戏运行时持续同步当前界面、角色、阶段与运行状态
+- 在战斗阶段调用战斗提示词，处理出牌、用药、选目标、结束回合
+- 在非战斗阶段调用爬塔提示词，处理路线、抓牌、事件、商店、休息点等决策
+- 为不同角色分别保存独立提示词
+- 在桌面控制台中实时查看连接状态、当前计划、最近动作与错误信息
+- 在本地保存模型配置与提示词，不依赖额外中间服务
 
-- Mod 目录：`mods/CreativeAI/`
-- Mod 文件：`CreativeAI.dll`、`CreativeAI.pck`、`CreativeAI.json`
-- 桌面程序：`mods/CreativeAI/desktop/CreativeAI.Desktop.exe`
-- 本地服务：`http://127.0.0.1:8081/`
-- 健康检查：`http://127.0.0.1:8081/health`
-- 本地运行目录：`%LOCALAPPDATA%\\creative-ai\\`
+## 项目组成
 
-如果你想使用原版 `STS2 AI Agent`，请切回 `master` 分支；原版仍使用 `STS2AIAgent` 和 `8080`。
-
-## 安装后目录
-
-构建并安装后，游戏目录通常会出现：
+安装完成后，核心结构如下：
 
 ```text
 Slay the Spire 2/
   mods/
-    STS2AIAgent/
-      ...
     CreativeAI/
       CreativeAI.dll
       CreativeAI.pck
@@ -45,89 +37,150 @@ Slay the Spire 2/
         CreativeAI.Desktop.exe
 ```
 
-## 快速开始
+默认运行参数：
 
-### 1. 安装 Mod
+- Mod 目录：`mods/CreativeAI/`
+- 本地服务：`http://127.0.0.1:8081/`
+- 健康检查：`http://127.0.0.1:8081/health`
+- 本地配置目录：`%LOCALAPPDATA%\creative-ai\`
 
-如果你直接使用已经构建好的文件，只需要把整个 `CreativeAI` 文件夹放进游戏目录的 `mods/` 中。
+## 核心功能
+
+### 1. 游戏内托管
+
+当你在控制台点击“开始托管”后，系统会在当前对局中自动接管决策。
+
+- 战斗中使用战斗提示词
+- 地图、奖励、事件、商店、休息点等阶段使用爬塔提示词
+- 运行时会自动根据当前上下文切换 Agent
+
+### 2. 角色专属提示词
+
+每个角色都有独立的两套提示词：
+
+- 战斗提示词：偏向回合内操作与即时战术
+- 爬塔提示词：偏向路线规划、资源管理与长期构筑
+
+只要进入对应角色的对局，控制台就会自动切换到该角色的提示词上下文。
+
+### 3. 桌面控制台
+
+桌面控制台提供这些能力：
+
+- 配置模型服务地址、模型名和 API Key
+- 检测模型连接
+- 保存配置到本地并同步给游戏内服务
+- 启动或停止 AI 托管
+- 查看当前角色、当前界面、当前阶段、当前计划、最近动作和错误信息
+- 在托管停止时编辑当前角色的提示词
+
+## 使用方式
+
+### 1. 安装
+
+将整个 `CreativeAI` 文件夹放入游戏目录的 `mods/` 下即可。
 
 ### 2. 启动游戏
 
-启动游戏后，`CreativeAI` 会在后台启动本地服务，并尝试拉起桌面控制台。
+启动游戏后，Mod 会尝试启动本地服务，并拉起桌面控制台。
 
-如果你想确认 Mod 是否已经生效，可以打开：
+如果你想检查服务是否正常工作，可访问：
 
 ```text
 http://127.0.0.1:8081/health
 ```
 
-### 3. 使用桌面控制台
+### 3. 配置模型
 
-桌面控制台主要用于：
+第一次使用时，需要在控制台填写：
 
-- 配置 Base URL、模型和 API Key
-- 编辑当前角色的战斗提示词 / 爬塔提示词
-- 启动或停止 AI 托管
-- 观察当前角色、当前界面、当前计划和最近动作
+- `Base URL`
+- `模型`
+- `API Key`
 
-实验分支的提示词和日志默认保存在：
+保存后，配置会写入本地目录：
 
 ```text
-%LOCALAPPDATA%\creative-ai\
+%LOCALAPPDATA%\creative-ai\config\
 ```
+
+### 4. 编辑提示词
+
+进入任意角色的实际对局后，控制台会识别当前角色，并加载该角色的：
+
+- 战斗提示词
+- 爬塔提示词
+
+当 AI 未运行时，你可以直接编辑并保存。
+
+### 5. 启动托管
+
+完成配置后，点击“开始托管”即可。
+
+运行过程中：
+
+- 配置输入框会锁定
+- 提示词输入框会锁定
+- 控制台会持续显示当前托管状态与 AI 输出
+
+点击“停止托管”后即可恢复编辑。
+
+## 适用场景
+
+`创造性AI` 适合这些用途：
+
+- 想让 AI 完整跑一局爬塔
+- 想为不同角色分别调教提示词
+- 想观察 AI 在不同阶段的计划、理由和执行结果
+- 想把模型调用、提示词编辑和游戏托管整合在一个本地工作流里
 
 ## 从源码构建
 
-如果你在仓库中直接构建，可使用：
+可使用脚本直接编译并安装到游戏目录：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ".\scripts\build-mod.ps1" -Configuration Debug -GameRoot "D:\SteamLibrary\steamapps\common\Slay the Spire 2" -GodotExe "D:\godot\Godot_v4.5.1-stable_win64.exe\Godot_v4.5.1-stable_win64_console.exe"
 ```
 
-构建脚本会：
+构建结果包括：
 
-- 编译 `CreativeAI.dll`
-- 编译 `CreativeAI.Desktop.exe`
-- 生成 `CreativeAI.pck`
-- 安装到游戏目录 `mods/CreativeAI/`
+- `CreativeAI.dll`
+- `CreativeAI.pck`
+- `CreativeAI.Desktop.exe`
 
-## 使用影响
-
-移除 `mcp_server` 后，不影响以下功能：
-
-- 游戏内 AI 托管
-- 桌面控制台启动与使用
-- 提示词编辑
-- 本地知识库读写
-- 与原版主线并存安装
-
-会失去的能力只有：
-
-- 通过 MCP 客户端把游戏当成一个 MCP 工具来调用
-- 旧的 `start-mcp-stdio.ps1` / `start-mcp-network.ps1` 这类启动方式
+并会自动安装到游戏目录的 `mods/CreativeAI/` 中。
 
 ## 常见问题
 
-### 看不到 `http://127.0.0.1:8081/health`
-
-优先检查：
-
-1. 游戏是否已经启动
-2. `mods/CreativeAI/` 是否完整存在
-3. `CreativeAI.dll` 和 `CreativeAI.pck` 是否都在 `mods/CreativeAI/` 下
-4. 文件名是否被系统自动改成了带 `(1)` 的副本
-
-### 桌面控制台没有弹出
+### 控制台打不开
 
 优先检查：
 
 1. `mods/CreativeAI/desktop/CreativeAI.Desktop.exe` 是否存在
-2. 是否被安全软件拦截
-3. 是否已经有一个同名桌面进程在运行
+2. 是否被系统或安全软件拦截
+3. 是否已经有同名进程在运行
 
-## 相关目录
+### 健康检查地址无法访问
 
-- `STS2AIAgent/`：游戏 Mod 源码
-- `STS2AIAgent.Desktop/`：桌面控制台源码
-- `scripts/build-mod.ps1`：构建并安装实验分支
-- `scripts/package-release.ps1`：打包实验分支发布物
+优先检查：
+
+1. 游戏是否已经启动
+2. `mods/CreativeAI/` 是否完整
+3. `CreativeAI.dll` 与 `CreativeAI.pck` 是否都存在
+4. 本地 `8081` 端口是否被其他程序占用
+
+### 为什么提示词不能随时编辑
+
+这是刻意的运行保护：
+
+- AI 运行时会锁定提示词与基础配置
+- 目的是避免在同一局运行中途切换上下文，导致决策漂移或配置不一致
+
+停止托管后即可继续修改。
+
+## 目录说明
+
+- `C:\Users\白泽\Desktop\工作\STS2-Agent\STS2AIAgent\`：游戏内 Mod 源码
+- `C:\Users\白泽\Desktop\工作\STS2-Agent\STS2AIAgent.Desktop\`：桌面控制台源码
+- `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\build-mod.ps1`：构建并安装
+- `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\package-release.ps1`：打包发布物

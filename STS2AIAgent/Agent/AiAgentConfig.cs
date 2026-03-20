@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 
 namespace STS2AIAgent.Agent;
@@ -22,6 +23,8 @@ internal sealed class AiAgentConfig
 
     public bool auto_combat_loop { get; init; }
 
+    public bool debug_mode { get; init; }
+
     public Dictionary<string, string> character_combat_prompts { get; init; } = new(PromptKeyComparer);
 
     public Dictionary<string, string> character_route_prompts { get; init; } = new(PromptKeyComparer);
@@ -38,6 +41,7 @@ internal sealed class AiAgentConfig
             temperature = temperature,
             auto_execute = auto_execute,
             auto_combat_loop = auto_combat_loop,
+            debug_mode = debug_mode,
             character_combat_prompts = new Dictionary<string, string>(character_combat_prompts, PromptKeyComparer),
             character_route_prompts = new Dictionary<string, string>(character_route_prompts, PromptKeyComparer)
         };
@@ -58,6 +62,7 @@ internal sealed class AiAgentConfig
             temperature.Equals(other.temperature) &&
             auto_execute == other.auto_execute &&
             auto_combat_loop == other.auto_combat_loop &&
+            debug_mode == other.debug_mode &&
             DictionaryEquals(character_combat_prompts, other.character_combat_prompts) &&
             DictionaryEquals(character_route_prompts, other.character_route_prompts);
     }
@@ -85,8 +90,9 @@ internal sealed class AiAgentConfig
             temperature = normalizedTemperature,
             auto_execute = auto_execute,
             auto_combat_loop = auto_combat_loop,
-            character_combat_prompts = SanitizePromptMap(character_combat_prompts),
-            character_route_prompts = SanitizePromptMap(character_route_prompts)
+            debug_mode = debug_mode,
+            character_combat_prompts = AiDefaultPrompts.MergeCombatPrompts(character_combat_prompts),
+            character_route_prompts = AiDefaultPrompts.MergeRoutePrompts(character_route_prompts)
         };
     }
 
@@ -102,7 +108,10 @@ internal sealed class AiAgentConfig
             return prompt;
         }
 
-        return string.Empty;
+        return AiDefaultPrompts.GetDefaultPrompt(
+            runtimeKind == AiRuntimeKind.Combat,
+            characterId,
+            characterName);
     }
 
     private static bool TryReadPrompt(IReadOnlyDictionary<string, string> prompts, string? key, out string prompt)
@@ -113,6 +122,15 @@ internal sealed class AiAgentConfig
             return false;
         }
 
+        var normalizedKey = AiDefaultPrompts.ResolvePromptKey(key);
+        if (!string.IsNullOrWhiteSpace(normalizedKey) &&
+            prompts.TryGetValue(normalizedKey, out var normalizedPrompt) &&
+            !string.IsNullOrWhiteSpace(normalizedPrompt))
+        {
+            prompt = normalizedPrompt;
+            return true;
+        }
+
         if (!prompts.TryGetValue(key.Trim(), out var rawPrompt) || string.IsNullOrWhiteSpace(rawPrompt))
         {
             return false;
@@ -120,29 +138,6 @@ internal sealed class AiAgentConfig
 
         prompt = rawPrompt;
         return true;
-    }
-
-    private static Dictionary<string, string> SanitizePromptMap(IReadOnlyDictionary<string, string>? prompts)
-    {
-        var sanitized = new Dictionary<string, string>(PromptKeyComparer);
-        if (prompts == null)
-        {
-            return sanitized;
-        }
-
-        foreach (var pair in prompts)
-        {
-            var key = pair.Key?.Trim();
-            var value = pair.Value?.Trim();
-            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            sanitized[key] = value;
-        }
-
-        return sanitized;
     }
 
     private static bool DictionaryEquals(IReadOnlyDictionary<string, string>? left, IReadOnlyDictionary<string, string>? right)
@@ -210,11 +205,25 @@ internal static class AiRuntimePaths
 
     public static string ConfigPath => Path.Combine(ConfigRoot, "in-game-agent.json");
 
+    public static string ModRoot
+    {
+        get
+        {
+            var assemblyPath = Assembly.GetExecutingAssembly().Location;
+            var modDir = Path.GetDirectoryName(assemblyPath);
+            return string.IsNullOrWhiteSpace(modDir) ? AppContext.BaseDirectory : modDir;
+        }
+    }
+
+    public static string BundledConfigPath => Path.Combine(ModRoot, "in-game-agent.json");
+
     public static string LogRoot => Path.Combine(AppRoot, "logs");
 
     public static string UiLogPath => Path.Combine(LogRoot, "ui-runtime.log");
 
     public static string AiLogPath => Path.Combine(LogRoot, "agent-runtime.log");
+
+    public static string LlmDebugJsonlPath => Path.Combine(LogRoot, "llm-debug.jsonl");
 
     public static string KnowledgeRoot
     {
@@ -247,6 +256,8 @@ internal sealed class AiConfigStore
 
     public AiAgentConfig Load()
     {
+        EnsureConfigFileExists();
+
         var path = AiRuntimePaths.ConfigPath;
         if (!File.Exists(path))
         {
@@ -266,6 +277,8 @@ internal sealed class AiConfigStore
 
     public bool TryLoad(out AiAgentConfig config, out string error)
     {
+        EnsureConfigFileExists();
+
         var path = AiRuntimePaths.ConfigPath;
         if (!File.Exists(path))
         {
@@ -305,5 +318,23 @@ internal sealed class AiConfigStore
         var path = AiRuntimePaths.ConfigPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(config.Sanitize(), JsonOptions));
+    }
+
+    private static void EnsureConfigFileExists()
+    {
+        var path = AiRuntimePaths.ConfigPath;
+        if (File.Exists(path))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (AiDefaultPrompts.TryReadTemplateJson(out var json))
+        {
+            File.WriteAllText(path, json);
+            return;
+        }
+
+        File.WriteAllText(path, JsonSerializer.Serialize(new AiAgentConfig().Sanitize(), JsonOptions));
     }
 }

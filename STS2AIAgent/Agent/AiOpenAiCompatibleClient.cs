@@ -19,81 +19,215 @@ internal sealed class AiOpenAiCompatibleClient
 
     public async Task<AiDecisionResult> RequestDecisionAsync(AiAgentConfig config, AiPrompt prompt, CancellationToken cancellationToken)
     {
-        var content = await RequestChatCompletionAsync(
+        return await RequestDecisionAsync(
             config,
-            new[]
-            {
-                new ChatMessage("system", prompt.SystemPrompt),
-                new ChatMessage("user", prompt.UserPrompt)
-            },
+            prompt,
+            new AiLlmCallContext(),
+            null,
             cancellationToken).ConfigureAwait(false);
+    }
 
-        return ParseDecisionFromContent(content);
+    public async Task<AiDecisionResult> RequestDecisionAsync(
+        AiAgentConfig config,
+        AiPrompt prompt,
+        AiLlmCallContext callContext,
+        Action<string>? debugLogFailureSink,
+        CancellationToken cancellationToken)
+    {
+        var messages = new[]
+        {
+            new ChatMessage("system", prompt.SystemPrompt),
+            new ChatMessage("user", prompt.UserPrompt)
+        };
+        var sanitized = ValidateAndSanitizeConfig(config);
+        var requestPayload = BuildRequestPayload(sanitized, messages);
+        var requestJson = JsonSerializer.Serialize(requestPayload, JsonOptions);
+        var requestId = Guid.NewGuid().ToString("N");
+        var startedUtc = DateTime.UtcNow;
+        ChatCompletionTrace? responseTrace = null;
+
+        try
+        {
+            responseTrace = await RequestChatCompletionAsync(sanitized, requestJson, cancellationToken).ConfigureAwait(false);
+            EnsureSuccessResponse(responseTrace.Value);
+            var content = ExtractMessageContent(responseTrace.Value.ResponseBody);
+            var decision = ParseDecisionFromContent(content);
+
+            WriteLlmExchangeWithDiagnostics(config, new
+            {
+                timestamp_utc = startedUtc,
+                finished_utc = DateTime.UtcNow,
+                request_id = requestId,
+                type = "llm_call",
+                success = true,
+                context = callContext,
+                config = new
+                {
+                    provider = sanitized.provider,
+                    base_url = sanitized.base_url,
+                    model = sanitized.model,
+                    temperature = sanitized.temperature
+                },
+                request = new
+                {
+                    uri = BuildChatCompletionsUri(sanitized.base_url).ToString(),
+                    json = requestJson,
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
+                },
+                response = new
+                {
+                    status_code = responseTrace.Value.StatusCode,
+                    body = responseTrace.Value.ResponseBody,
+                    content
+                },
+                parsed = decision
+            }, debugLogFailureSink);
+
+            return decision;
+        }
+        catch (Exception ex)
+        {
+            WriteLlmExchangeWithDiagnostics(config, new
+            {
+                timestamp_utc = startedUtc,
+                finished_utc = DateTime.UtcNow,
+                request_id = requestId,
+                type = "llm_call",
+                success = false,
+                context = callContext,
+                config = new
+                {
+                    provider = sanitized.provider,
+                    base_url = sanitized.base_url,
+                    model = sanitized.model,
+                    temperature = sanitized.temperature
+                },
+                request = new
+                {
+                    uri = BuildChatCompletionsUri(sanitized.base_url).ToString(),
+                    json = requestJson,
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
+                },
+                response = responseTrace == null
+                    ? null
+                    : new
+                    {
+                        status_code = responseTrace.Value.StatusCode,
+                        body = responseTrace.Value.ResponseBody
+                    },
+                error = ex.Message
+            }, debugLogFailureSink);
+
+            throw;
+        }
     }
 
     public async Task<string> TestConnectionAsync(AiAgentConfig config, CancellationToken cancellationToken)
     {
-        var content = await RequestChatCompletionAsync(
-            config,
-            new[]
-            {
-                new ChatMessage("system", "You are a connectivity probe. Reply with a short plain text acknowledgement."),
-                new ChatMessage("user", "Respond with: OK")
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        return TrimForError(content);
+        return await TestConnectionAsync(config, null, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string> RequestChatCompletionAsync(AiAgentConfig config, IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken)
+    public async Task<string> TestConnectionAsync(
+        AiAgentConfig config,
+        Action<string>? debugLogFailureSink,
+        CancellationToken cancellationToken)
     {
-        var sanitized = config.Sanitize();
-        if (string.IsNullOrWhiteSpace(sanitized.base_url))
+        var messages = new[]
         {
-            throw new InvalidOperationException("Base URL is required.");
-        }
+            new ChatMessage("system", "You are a connectivity probe. Reply with a short plain text acknowledgement."),
+            new ChatMessage("user", "Respond with: OK")
+        };
+        var sanitized = ValidateAndSanitizeConfig(config);
+        var requestPayload = BuildRequestPayload(sanitized, messages);
+        var requestJson = JsonSerializer.Serialize(requestPayload, JsonOptions);
+        var requestId = Guid.NewGuid().ToString("N");
+        var startedUtc = DateTime.UtcNow;
+        ChatCompletionTrace? responseTrace = null;
 
-        if (string.IsNullOrWhiteSpace(sanitized.model))
+        try
         {
-            throw new InvalidOperationException("Model is required.");
-        }
+            responseTrace = await RequestChatCompletionAsync(sanitized, requestJson, cancellationToken).ConfigureAwait(false);
+            EnsureSuccessResponse(responseTrace.Value);
+            var content = ExtractMessageContent(responseTrace.Value.ResponseBody);
 
-        if (string.IsNullOrWhiteSpace(sanitized.api_key))
+            WriteLlmExchangeWithDiagnostics(config, new
+            {
+                timestamp_utc = startedUtc,
+                finished_utc = DateTime.UtcNow,
+                request_id = requestId,
+                type = "llm_connectivity_probe",
+                success = true,
+                context = new AiLlmCallContext { purpose = "test_connection" },
+                config = new
+                {
+                    provider = sanitized.provider,
+                    base_url = sanitized.base_url,
+                    model = sanitized.model,
+                    temperature = sanitized.temperature
+                },
+                request = new
+                {
+                    uri = BuildChatCompletionsUri(sanitized.base_url).ToString(),
+                    json = requestJson,
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
+                },
+                response = new
+                {
+                    status_code = responseTrace.Value.StatusCode,
+                    body = responseTrace.Value.ResponseBody,
+                    content
+                }
+            }, debugLogFailureSink);
+
+            return TrimForError(content);
+        }
+        catch (Exception ex)
         {
-            throw new InvalidOperationException("API key is required.");
-        }
+            WriteLlmExchangeWithDiagnostics(config, new
+            {
+                timestamp_utc = startedUtc,
+                finished_utc = DateTime.UtcNow,
+                request_id = requestId,
+                type = "llm_connectivity_probe",
+                success = false,
+                context = new AiLlmCallContext { purpose = "test_connection" },
+                config = new
+                {
+                    provider = sanitized.provider,
+                    base_url = sanitized.base_url,
+                    model = sanitized.model,
+                    temperature = sanitized.temperature
+                },
+                request = new
+                {
+                    uri = BuildChatCompletionsUri(sanitized.base_url).ToString(),
+                    json = requestJson,
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
+                },
+                response = responseTrace == null
+                    ? null
+                    : new
+                    {
+                        status_code = responseTrace.Value.StatusCode,
+                        body = responseTrace.Value.ResponseBody
+                    },
+                error = ex.Message
+            }, debugLogFailureSink);
 
+            throw;
+        }
+    }
+
+    private async Task<ChatCompletionTrace> RequestChatCompletionAsync(AiAgentConfig sanitized, string requestJson, CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, BuildChatCompletionsUri(sanitized.base_url));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sanitized.api_key);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(
-                new
-                {
-                    model = sanitized.model,
-                    temperature = sanitized.temperature,
-                    messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
-                },
-                JsonOptions),
-            Encoding.UTF8,
-            "application/json");
+        request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
         using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException($"LLM request failed ({(int)response.StatusCode}): {TrimForError(body)}");
-        }
-
-        using var responseDocument = JsonDocument.Parse(body);
-        if (!responseDocument.RootElement.TryGetProperty("choices", out var choicesElement) ||
-            choicesElement.ValueKind != JsonValueKind.Array ||
-            choicesElement.GetArrayLength() == 0)
-        {
-            throw new InvalidOperationException($"LLM response did not contain choices: {TrimForError(body)}");
-        }
-
-        return ExtractMessageContent(choicesElement[0]);
+        return new ChatCompletionTrace((int)response.StatusCode, body);
     }
 
     private static AiDecisionResult ParseDecisionFromContent(string content)
@@ -130,9 +264,63 @@ internal sealed class AiOpenAiCompatibleClient
         return new Uri(new Uri(normalized, UriKind.Absolute), "chat/completions");
     }
 
+    private static object BuildRequestPayload(AiAgentConfig sanitized, IReadOnlyList<ChatMessage> messages)
+    {
+        return new
+        {
+            model = sanitized.model,
+            temperature = sanitized.temperature,
+            messages = messages.Select(message => new { role = message.Role, content = message.Content }).ToArray()
+        };
+    }
+
+    private static AiAgentConfig ValidateAndSanitizeConfig(AiAgentConfig config)
+    {
+        var sanitized = config.Sanitize();
+        if (string.IsNullOrWhiteSpace(sanitized.base_url))
+        {
+            throw new InvalidOperationException("Base URL is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(sanitized.model))
+        {
+            throw new InvalidOperationException("Model is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(sanitized.api_key))
+        {
+            throw new InvalidOperationException("API key is required.");
+        }
+
+        return sanitized;
+    }
+
+    private static void EnsureSuccessResponse(ChatCompletionTrace responseTrace)
+    {
+        if (responseTrace.StatusCode < 200 || responseTrace.StatusCode >= 300)
+        {
+            throw new InvalidOperationException($"LLM request failed ({responseTrace.StatusCode}): {TrimForError(responseTrace.ResponseBody)}");
+        }
+    }
+
     private readonly record struct ChatMessage(string Role, string Content);
 
-    private static string ExtractMessageContent(JsonElement choiceElement)
+    private readonly record struct ChatCompletionTrace(int StatusCode, string ResponseBody);
+
+    private static string ExtractMessageContent(string responseBody)
+    {
+        using var responseDocument = JsonDocument.Parse(responseBody);
+        if (!responseDocument.RootElement.TryGetProperty("choices", out var choicesElement) ||
+            choicesElement.ValueKind != JsonValueKind.Array ||
+            choicesElement.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException($"LLM response did not contain choices: {TrimForError(responseBody)}");
+        }
+
+        return ExtractMessageContentFromChoice(choicesElement[0]);
+    }
+
+    private static string ExtractMessageContentFromChoice(JsonElement choiceElement)
     {
         if (!choiceElement.TryGetProperty("message", out var messageElement))
         {
@@ -241,5 +429,19 @@ internal sealed class AiOpenAiCompatibleClient
         const int maxLength = 600;
         var trimmed = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
         return trimmed.Length <= maxLength ? trimmed : $"{trimmed[..maxLength]}...";
+    }
+
+    private static void WriteLlmExchangeWithDiagnostics(
+        AiAgentConfig config,
+        object payload,
+        Action<string>? debugLogFailureSink)
+    {
+        if (AiDebugLogger.TryWriteLlmExchange(config, payload, out var error) ||
+            string.IsNullOrWhiteSpace(error))
+        {
+            return;
+        }
+
+        debugLogFailureSink?.Invoke($"Failed to append LLM debug log at {AiRuntimePaths.LlmDebugJsonlPath}: {error}");
     }
 }

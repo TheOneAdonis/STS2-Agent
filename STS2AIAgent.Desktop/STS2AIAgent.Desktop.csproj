@@ -9,4 +9,10 @@
     <AssemblyName>CreativeAI.Desktop</AssemblyName>
     <RootNamespace>STS2AIAgent.Desktop</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\STS2AIAgent\in-game-agent.json" Link="in-game-agent.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

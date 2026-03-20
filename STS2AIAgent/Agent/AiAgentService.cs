@@ -16,6 +16,7 @@ internal sealed class AiAgentService
     private static readonly TimeSpan RouteContinuationProbeInterval = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan RouteContinuationTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ConfigRefreshInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LlmDebugFailureRepeatInterval = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();
     private readonly AiConfigStore _configStore = new();
@@ -50,6 +51,11 @@ internal sealed class AiAgentService
     private bool _canStartAutomation;
     private string _startBlockReason = "请先进入一局爬塔后再启动托管。";
     private bool _lastRunnableState;
+    private string _lastLoggedPageState = string.Empty;
+    private string _lastLoggedScreen = string.Empty;
+    private string _lastLoggedPhase = string.Empty;
+    private string _lastLlmDebugFailureMessage = string.Empty;
+    private DateTime _lastLlmDebugFailureUtc = DateTime.MinValue;
 
     public static AiAgentService Instance { get; } = new();
 
@@ -59,6 +65,7 @@ internal sealed class AiAgentService
 
     public void Initialize()
     {
+        var hadLocalConfig = File.Exists(AiRuntimePaths.ConfigPath);
         var loadedConfig = _configStore.Load().Sanitize();
         if (loadedConfig.enable_agent)
         {
@@ -72,6 +79,7 @@ internal sealed class AiAgentService
                 temperature = loadedConfig.temperature,
                 auto_execute = loadedConfig.auto_execute,
                 auto_combat_loop = loadedConfig.auto_combat_loop,
+                debug_mode = loadedConfig.debug_mode,
                 character_combat_prompts = new Dictionary<string, string>(loadedConfig.character_combat_prompts, StringComparer.OrdinalIgnoreCase),
                 character_route_prompts = new Dictionary<string, string>(loadedConfig.character_route_prompts, StringComparer.OrdinalIgnoreCase)
             };
@@ -90,10 +98,18 @@ internal sealed class AiAgentService
             }
         }
 
-        AddLog("INFO", $"Loaded config provider={loadedConfig.provider}, model={loadedConfig.model}, key={AiSecretMasker.Mask(loadedConfig.api_key)}, enable_agent={loadedConfig.enable_agent}, auto_execute={loadedConfig.auto_execute}, auto_combat_loop={loadedConfig.auto_combat_loop}");
+        AddLog("INFO", $"Loaded config provider={loadedConfig.provider}, model={loadedConfig.model}, key={AiSecretMasker.Mask(loadedConfig.api_key)}, enable_agent={loadedConfig.enable_agent}, auto_execute={loadedConfig.auto_execute}, auto_combat_loop={loadedConfig.auto_combat_loop}, debug_mode={loadedConfig.debug_mode}");
         AddLog("INFO", "Agent startup policy: enable_agent is forced to false on game launch until you click start.");
+        if (!hadLocalConfig && File.Exists(AiRuntimePaths.ConfigPath))
+        {
+            AddLog("INFO", $"Created local config from bundled template: {AiRuntimePaths.ConfigPath}");
+        }
+
         AddLog("INFO", $"Detailed LLM config path: {AiRuntimePaths.ConfigPath}");
+        AddLog("INFO", $"Bundled default config path: {AiRuntimePaths.BundledConfigPath}");
         AddLog("INFO", $"Knowledge root: {AiRuntimePaths.KnowledgeRoot}");
+        AddLog("INFO", $"LLM debug JSONL path: {AiRuntimePaths.LlmDebugJsonlPath}");
+        EnsureLlmDebugFileReady(loadedConfig, "startup");
     }
 
     public void Shutdown()
@@ -141,6 +157,24 @@ internal sealed class AiAgentService
                 logs = _logs.ToArray()
             };
         }
+    }
+
+    public async Task<AiRuntimeSnapshot> GetSnapshotAsync(bool refreshObservedState)
+    {
+        if (refreshObservedState)
+        {
+            try
+            {
+                var state = await GameThread.InvokeAsync(GameStateService.BuildStatePayload).ConfigureAwait(false);
+                CaptureObservedState(state);
+            }
+            catch (Exception ex)
+            {
+                AddLog("WARN", $"Observed state refresh failed during snapshot request: {ex.Message}");
+            }
+        }
+
+        return GetSnapshot();
     }
 
     public void SaveConfig(AiAgentConfig config)
@@ -199,6 +233,7 @@ internal sealed class AiAgentService
                     temperature = _config.temperature,
                     auto_execute = _config.auto_execute,
                     auto_combat_loop = _config.auto_combat_loop,
+                    debug_mode = _config.debug_mode,
                     character_combat_prompts = new Dictionary<string, string>(_config.character_combat_prompts, StringComparer.OrdinalIgnoreCase),
                     character_route_prompts = new Dictionary<string, string>(_config.character_route_prompts, StringComparer.OrdinalIgnoreCase)
                 };
@@ -349,7 +384,7 @@ internal sealed class AiAgentService
         }
 
         var startedUtc = DateTime.UtcNow;
-        var reply = await _llmClient.TestConnectionAsync(config, cancellationToken).ConfigureAwait(false);
+        var reply = await _llmClient.TestConnectionAsync(config, ReportLlmDebugFailure, cancellationToken).ConfigureAwait(false);
         return new AiConnectivityProbeResult
         {
             ok = true,
@@ -385,6 +420,8 @@ internal sealed class AiAgentService
         var (characterId, characterName) = ResolveCurrentCharacter(state);
         var canStart = TryEvaluateStartAvailability(state, out var blockReason);
         var shouldWakeFromPendingStart = false;
+        var pageState = ClassifyPageState(state);
+        var shouldLogPageState = false;
 
         lock (_gate)
         {
@@ -403,6 +440,22 @@ internal sealed class AiAgentService
             _sessionPhase = state.session.phase;
             _canStartAutomation = canStart;
             _startBlockReason = blockReason;
+            shouldLogPageState =
+                !string.Equals(_lastLoggedPageState, pageState, StringComparison.Ordinal) ||
+                !string.Equals(_lastLoggedScreen, state.screen, StringComparison.Ordinal) ||
+                !string.Equals(_lastLoggedPhase, state.session.phase, StringComparison.Ordinal);
+
+            if (shouldLogPageState)
+            {
+                _lastLoggedPageState = pageState;
+                _lastLoggedScreen = state.screen;
+                _lastLoggedPhase = state.session.phase;
+            }
+        }
+
+        if (shouldLogPageState)
+        {
+            AddLog("INFO", $"Page state changed: {pageState} | screen={TranslateScreen(state.screen)} | phase={TranslateSessionPhase(state.session.phase)}");
         }
 
         if (shouldWakeFromPendingStart)
@@ -453,6 +506,16 @@ internal sealed class AiAgentService
             "CARD_SELECTION" => true,
             _ => false
         };
+    }
+
+    private static string ClassifyPageState(GameStatePayload state)
+    {
+        return string.Equals(state.session.phase, "run", StringComparison.OrdinalIgnoreCase) ||
+               state.run != null ||
+               state.in_combat ||
+               IsRunnableScreen(state.screen)
+            ? "游戏中"
+            : "主菜单";
     }
 
     private static (string characterId, string characterName) ResolveCurrentCharacter(GameStatePayload state)
@@ -524,7 +587,9 @@ internal sealed class AiAgentService
             var state = await GameThread.InvokeAsync(GameStateService.BuildStatePayload).ConfigureAwait(false);
             CaptureObservedState(state);
             var runtimeKind = DetermineRuntimeKind(state);
-            if (runtimeKind == AiRuntimeKind.Combat && !state.combat_actions_ready && !forceCombatState)
+            var combatRuntimeReady = CanProcessCombatRuntimeState(state);
+
+            if (runtimeKind == AiRuntimeKind.Combat && !combatRuntimeReady && !forceCombatState)
             {
                 lock (_gate)
                 {
@@ -537,7 +602,7 @@ internal sealed class AiAgentService
                 return;
             }
 
-            if (runtimeKind == AiRuntimeKind.Combat && forceCombatState && !state.combat_actions_ready)
+            if (runtimeKind == AiRuntimeKind.Combat && forceCombatState && !combatRuntimeReady)
             {
                 AddLog("WARN", $"Forcing combat resync while state still reports {state.combat_turn_state}; validator will decide whether execution is currently possible.");
             }
@@ -570,7 +635,23 @@ internal sealed class AiAgentService
                 });
             AddLog("INFO", $"Requesting {FormatRuntimeKind(runtimeKind)} LLM suggestion for screen={state.screen}, turn={(state.turn?.ToString() ?? "null")}.");
 
-            var decision = await _llmClient.RequestDecisionAsync(config, prompt, cancellationToken).ConfigureAwait(false);
+            var decision = await _llmClient.RequestDecisionAsync(
+                config,
+                prompt,
+                new AiLlmCallContext
+                {
+                    purpose = "decision",
+                    runtime = FormatRuntimeKind(runtimeKind),
+                    screen = state.screen,
+                    session_phase = state.session.phase,
+                    run_id = state.run_id,
+                    turn = state.turn,
+                    character_id = state.run?.character_id ?? string.Empty,
+                    character_name = state.run?.character_name ?? string.Empty,
+                    auto_execute = config.auto_execute
+                },
+                ReportLlmDebugFailure,
+                cancellationToken).ConfigureAwait(false);
             var originalActionName = decision.action.name;
             decision = MaybeApplyCombatTurnFallback(state, runtimeKind, decision);
             if (!string.Equals(originalActionName, decision.action.name, StringComparison.OrdinalIgnoreCase) &&
@@ -858,7 +939,8 @@ internal sealed class AiAgentService
             Stop();
         }
 
-        AddLog("INFO", $"Reloaded config from {source}: provider={newConfig.provider}, model={newConfig.model}, key={AiSecretMasker.Mask(newConfig.api_key)}, enable_agent={newConfig.enable_agent}, auto_execute={newConfig.auto_execute}, auto_combat_loop={newConfig.auto_combat_loop}");
+        AddLog("INFO", $"Reloaded config from {source}: provider={newConfig.provider}, model={newConfig.model}, key={AiSecretMasker.Mask(newConfig.api_key)}, enable_agent={newConfig.enable_agent}, auto_execute={newConfig.auto_execute}, auto_combat_loop={newConfig.auto_combat_loop}, debug_mode={newConfig.debug_mode}");
+        EnsureLlmDebugFileReady(newConfig, $"config reload from {source}");
     }
 
     private void MaybeQueueAutoLoop()
@@ -906,13 +988,14 @@ internal sealed class AiAgentService
         _ = MonitorCombatContinuationAsync(generation, actionName, sourceTurn);
     }
 
-    private void BeginRouteContinuationMonitoring(string reason)
+    private void BeginRouteContinuationMonitoring(GameStatePayload state, string reason)
     {
         int generation;
         lock (_gate)
         {
             _routeContinuationGeneration++;
             generation = _routeContinuationGeneration;
+            ApplyRouteWaitingStatusLocked(state);
         }
 
         AddLog("INFO", $"Route continuation monitor armed: {reason}.");
@@ -936,7 +1019,7 @@ internal sealed class AiAgentService
                 else if (!state.in_combat &&
                     string.Equals(state.session.phase, "run", StringComparison.OrdinalIgnoreCase))
                 {
-                    BeginRouteContinuationMonitoring($"screen={state.screen}, available_actions={state.available_actions.Length}");
+                    BeginRouteContinuationMonitoring(state, $"screen={state.screen}, available_actions={state.available_actions.Length}");
                 }
 
                 return;
@@ -991,12 +1074,19 @@ internal sealed class AiAgentService
                 if (!state.in_combat)
                 {
                     AddLog("INFO", "Combat continuation monitor detected combat end; switching to route continuation monitoring.");
-                    BeginRouteContinuationMonitoring("combat ended");
+                    BeginRouteContinuationMonitoring(state, "combat ended");
                     return;
                 }
 
-                if (state.combat_actions_ready)
+                if (CanProcessCombatRuntimeState(state))
                 {
+                    if (!state.combat_actions_ready)
+                    {
+                        AddLog("INFO", $"Combat continuation monitor detected follow-up decision window on screen={state.screen}, actions={DescribeAvailableActions(state.available_actions)}.");
+                        _ = ProbeAutoLoopAsync();
+                        return;
+                    }
+
                     AddLog("INFO", $"Combat continuation monitor detected player_actionable on turn={(state.turn?.ToString() ?? "null")}; waiting {CombatPlayerTurnResumeDelay.TotalSeconds:0}s before waking the combat agent.");
                     await Task.Delay(CombatPlayerTurnResumeDelay).ConfigureAwait(false);
 
@@ -1012,9 +1102,17 @@ internal sealed class AiAgentService
                         }
                     }
 
-                    if (confirmedState.in_combat && confirmedState.combat_actions_ready)
+                    if (CanProcessCombatRuntimeState(confirmedState))
                     {
-                        AddLog("INFO", $"Combat continuation monitor resumed on confirmed state={confirmedState.combat_turn_state}, turn={(confirmedState.turn?.ToString() ?? "null")}.");
+                        if (confirmedState.combat_actions_ready)
+                        {
+                            AddLog("INFO", $"Combat continuation monitor resumed on confirmed state={confirmedState.combat_turn_state}, turn={(confirmedState.turn?.ToString() ?? "null")}.");
+                        }
+                        else
+                        {
+                            AddLog("INFO", $"Combat continuation monitor resumed on confirmed follow-up window screen={confirmedState.screen}, actions={DescribeAvailableActions(confirmedState.available_actions)}.");
+                        }
+
                         _ = ProbeAutoLoopAsync();
                         return;
                     }
@@ -1064,7 +1162,7 @@ internal sealed class AiAgentService
             await Task.Delay(CombatContinuationProbeInterval).ConfigureAwait(false);
         }
 
-        AddLog("WARN", "Combat continuation monitor timed out while waiting for the next actionable player state.");
+        AddLog("WARN", "Combat continuation monitor timed out while waiting for the next combat decision window.");
     }
 
     private async Task MonitorRouteContinuationAsync(int generation)
@@ -1103,6 +1201,11 @@ internal sealed class AiAgentService
                 if (!string.Equals(state.session.phase, "run", StringComparison.OrdinalIgnoreCase))
                 {
                     return;
+                }
+
+                lock (_gate)
+                {
+                    ApplyRouteWaitingStatusLocked(state);
                 }
 
                 if (TryGetAutoLoopRuntime(state, out _))
@@ -1152,12 +1255,18 @@ internal sealed class AiAgentService
         }
 
         runtimeKind = DetermineRuntimeKind(state);
-        if (runtimeKind == AiRuntimeKind.Combat && !state.combat_actions_ready)
+        if (runtimeKind == AiRuntimeKind.Combat && !CanProcessCombatRuntimeState(state))
         {
             return false;
         }
 
         return true;
+    }
+
+    private static bool CanProcessCombatRuntimeState(GameStatePayload state)
+    {
+        return DetermineRuntimeKind(state) == AiRuntimeKind.Combat &&
+            state.available_actions.Length > 0;
     }
 
     private void SetInactiveContextStandby(AiRuntimeKind activeRuntime)
@@ -1282,6 +1391,8 @@ internal sealed class AiAgentService
             "buy_card" => $"准备购买卡牌：{GetShopCardName(state, action.option_index)}",
             "buy_relic" => $"准备购买遗物：{GetShopRelicName(state, action.option_index)}",
             "buy_potion" => $"准备购买药水：{GetShopPotionName(state, action.option_index)}",
+            "select_deck_card" => $"准备选择卡牌：{GetSelectionCardName(state, action.option_index)}",
+            "confirm_selection" => "准备确认当前选牌",
             "proceed" => "准备继续前进",
             "collect_rewards_and_proceed" => "准备收取奖励并继续前进",
             "open_chest" => "准备打开宝箱",
@@ -1311,6 +1422,8 @@ internal sealed class AiAgentService
             "buy_card" => $"购买了卡牌：{GetShopCardName(state, action.option_index)}",
             "buy_relic" => $"购买了遗物：{GetShopRelicName(state, action.option_index)}",
             "buy_potion" => $"购买了药水：{GetShopPotionName(state, action.option_index)}",
+            "select_deck_card" => $"选择了卡牌：{GetSelectionCardName(state, action.option_index)}",
+            "confirm_selection" => "确认了当前选牌",
             "proceed" => "继续前进",
             "collect_rewards_and_proceed" => "收取奖励并继续前进",
             "open_chest" => "打开了宝箱",
@@ -1430,6 +1543,16 @@ internal sealed class AiAgentService
         return state.shop.potions[optionIndex.Value].name ?? "药水";
     }
 
+    private static string GetSelectionCardName(GameStatePayload state, int? optionIndex)
+    {
+        if (optionIndex == null || state.selection == null || optionIndex < 0 || optionIndex >= state.selection.cards.Length)
+        {
+            return "卡牌";
+        }
+
+        return state.selection.cards[optionIndex.Value].name;
+    }
+
     private void ApplyCombatWaitingStatusLocked(GameStatePayload state)
     {
         _activeRuntime = AiRuntimeKind.Combat;
@@ -1444,6 +1567,22 @@ internal sealed class AiAgentService
         _status = runtimeContext.Status;
         _stateSummary = $"界面={TranslateScreen(state.screen)} | 当前 Agent=战斗 Agent | 回合={state.turn?.ToString() ?? "-"} | 战斗阶段={TranslateCombatTurnState(state.combat_turn_state)}";
         SetInactiveContextStandby(AiRuntimeKind.Combat);
+    }
+
+    private void ApplyRouteWaitingStatusLocked(GameStatePayload state)
+    {
+        _activeRuntime = AiRuntimeKind.Route;
+        var runtimeContext = _contexts[AiRuntimeKind.Route];
+        runtimeContext.Status = TranslateRouteWaitState(state);
+        runtimeContext.Error = string.Empty;
+        if (string.IsNullOrWhiteSpace(runtimeContext.PendingAction))
+        {
+            runtimeContext.PendingAction = "正在观察";
+        }
+
+        _status = runtimeContext.Status;
+        _stateSummary = $"界面={TranslateScreen(state.screen)} | 当前 Agent=路线 Agent | 层数={state.run?.floor} | 回合={state.turn?.ToString() ?? "-"} | 可用动作={state.available_actions.Length}";
+        SetInactiveContextStandby(AiRuntimeKind.Route);
     }
 
     private static string TranslateCombatTurnState(string turnState)
@@ -1462,6 +1601,26 @@ internal sealed class AiAgentService
             "combat_ending" => "战斗即将结束",
             "player_unavailable" => "玩家状态暂不可用",
             _ => "过渡处理中"
+        };
+    }
+
+    private static string TranslateRouteWaitState(GameStatePayload state)
+    {
+        if (!string.Equals(state.session.phase, "run", StringComparison.OrdinalIgnoreCase))
+        {
+            return "等待进入对局";
+        }
+
+        return state.screen switch
+        {
+            "MAP" => "地图切换中",
+            "EVENT" => "事件处理中",
+            "REST" => "休息点处理中",
+            "SHOP" => "商店处理中",
+            "CHEST" => "宝箱处理中",
+            "REWARD" => "奖励结算中",
+            "CARD_SELECTION" => "选牌处理中",
+            _ => "路线过渡中"
         };
     }
 
@@ -1515,6 +1674,7 @@ internal sealed class AiAgentService
             temperature = config.temperature,
             auto_execute = config.auto_execute,
             auto_combat_loop = config.auto_combat_loop,
+            debug_mode = config.debug_mode,
             character_combat_prompts = new Dictionary<string, string>(config.character_combat_prompts, StringComparer.OrdinalIgnoreCase),
             character_route_prompts = new Dictionary<string, string>(config.character_route_prompts, StringComparer.OrdinalIgnoreCase)
         };
@@ -1527,12 +1687,68 @@ internal sealed class AiAgentService
             : value.Replace('\r', ' ').Replace('\n', ' ').Trim();
     }
 
+    private static string DescribeAvailableActions(IEnumerable<string> actions)
+    {
+        var names = actions
+            .Where(action => !string.IsNullOrWhiteSpace(action))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return names.Length == 0 ? "(none)" : string.Join(", ", names);
+    }
+
     private static void AddRuntimeNote(AgentRuntimeContext context, string note)
     {
         context.RecentNotes.Add(note);
         if (context.RecentNotes.Count > MaxRuntimeNotes)
         {
             context.RecentNotes.RemoveAt(0);
+        }
+    }
+
+    private void EnsureLlmDebugFileReady(AiAgentConfig config, string reason)
+    {
+        if (!config.debug_mode)
+        {
+            ClearLlmDebugFailureState();
+            return;
+        }
+
+        if (AiDebugLogger.TryEnsureFile(AiRuntimePaths.LlmDebugJsonlPath, out var error))
+        {
+            ClearLlmDebugFailureState();
+            return;
+        }
+
+        ReportLlmDebugFailure($"LLM debug logging is enabled but {reason} could not prepare {AiRuntimePaths.LlmDebugJsonlPath}: {error}");
+    }
+
+    private void ReportLlmDebugFailure(string message)
+    {
+        var nowUtc = DateTime.UtcNow;
+        lock (_gate)
+        {
+            var repeatedFailure =
+                string.Equals(_lastLlmDebugFailureMessage, message, StringComparison.Ordinal) &&
+                nowUtc - _lastLlmDebugFailureUtc < LlmDebugFailureRepeatInterval;
+
+            if (repeatedFailure)
+            {
+                return;
+            }
+
+            _lastLlmDebugFailureMessage = message;
+            _lastLlmDebugFailureUtc = nowUtc;
+        }
+
+        AddLog("WARN", message);
+    }
+
+    private void ClearLlmDebugFailureState()
+    {
+        lock (_gate)
+        {
+            _lastLlmDebugFailureMessage = string.Empty;
+            _lastLlmDebugFailureUtc = DateTime.MinValue;
         }
     }
 
@@ -1565,15 +1781,12 @@ internal sealed class AiAgentService
                 break;
         }
 
-        try
-        {
-            Directory.CreateDirectory(AiRuntimePaths.LogRoot);
-            File.AppendAllText(
+        if (!AiDebugLogger.TryAppendTextLine(
                 AiRuntimePaths.AiLogPath,
-                $"[{DateTime.UtcNow:O}] [{level}] {maskedMessage}{Environment.NewLine}");
-        }
-        catch
+                $"[{DateTime.UtcNow:O}] [{level}] {maskedMessage}",
+                out var writeError))
         {
+            Log.Warn($"{LogPrefix} Failed to append disk log at {AiRuntimePaths.AiLogPath}: {writeError}");
         }
     }
 

@@ -38,6 +38,7 @@ internal sealed class AiPromptBuilder
                 "Keep reasoning concise and operational, not hidden chain-of-thought.",
                 "All non-action fields in the JSON must be written in Chinese, including plan_summary, reasoning, stop_reason, and safety_checks.",
                 "Health carries across floors and combats; it does not automatically refill each floor.",
+                "Normal block is usually removed at the start of your next turn unless the live state clearly indicates it will be retained.",
                 "Do not spend HP casually for short-term value unless the trade is clearly worth the long-run risk.",
                 "A fixed healing opportunity normally appears only after defeating the floor boss, so survival and HP preservation matter.",
                 "When the state marks a card as playable=false, treat that as authoritative even if the card text looks strong.",
@@ -49,6 +50,9 @@ internal sealed class AiPromptBuilder
                     ? "Combat checklist: at the start of every turn, explicitly evaluate usable potions before committing to cards."
                     : "Route checklist: prefer actions that keep the run moving and avoid dead-end planning.",
                 runtimeContext.runtime_kind == AiRuntimeKind.Combat
+                    ? "The enemy_intents section is authoritative. Use it as the resolved enemy intent instead of guessing from raw move ids."
+                    : null,
+                runtimeContext.runtime_kind == AiRuntimeKind.Combat
                     ? "If no playable cards remain, decide whether a usable potion is worth using this turn; if not, choose end_turn immediately when available."
                     : "If the route state already exposes a concrete progress action, prefer that over returning none.",
                 runtimeContext.runtime_kind == AiRuntimeKind.Combat
@@ -57,6 +61,12 @@ internal sealed class AiPromptBuilder
                 runtimeContext.runtime_kind == AiRuntimeKind.Combat
                     ? "For play_card, choose only from hand entries where playable=true; if playable=false and why=not_enough_energy, do not plan around that card this step."
                     : "For route decisions, prefer currently available progress actions over speculative future branches.",
+                runtimeContext.runtime_kind == AiRuntimeKind.Route
+                    ? "When evaluating card rewards, take a card only if it strengthens the current deck plan, patches a clear weakness, or is a genuinely strong standalone pickup; skipping is better than blindly taking the first option."
+                    : null,
+                runtimeContext.runtime_kind == AiRuntimeKind.Route
+                    ? "Card reward decisions must account for current deck synergy, curve, defense, frontload, scaling, draw consistency, and relic interactions."
+                    : null,
                 string.IsNullOrWhiteSpace(characterPrompt)
                     ? "No extra character-specific guidance was provided."
                     : $"Character-specific guidance:\n{characterPrompt}",
@@ -95,6 +105,10 @@ internal sealed class AiPromptBuilder
             .AppendLine($"combat_playable_hand_count: {playableHandCount}")
             .AppendLine($"combat_usable_potion_count: {usablePotionCount}")
             .AppendLine($"combat_end_turn_available: {canEndTurn.ToString().ToLowerInvariant()}")
+            .AppendLine("enemy_intents:")
+            .AppendLine(runtimeContext.runtime_kind == AiRuntimeKind.Combat
+                ? BuildEnemyIntentLines(state.combat)
+                : "(none)")
             .AppendLine("runtime_context:")
             .AppendLine(recentNotes)
             .AppendLine("knowledge_snippet:")
@@ -104,5 +118,47 @@ internal sealed class AiPromptBuilder
             .ToString();
 
         return new AiPrompt(systemPrompt, userPrompt);
+    }
+
+    private static string BuildEnemyIntentLines(CombatPayload? combat)
+    {
+        if (combat?.enemies == null || combat.enemies.Length == 0)
+        {
+            return "(none)";
+        }
+
+        return string.Join(
+            "\n",
+            combat.enemies.Select(enemy =>
+            {
+                var parts = new List<string>
+                {
+                    $"- enemy[{enemy.index}] {enemy.name}",
+                    $"hp={enemy.current_hp}/{enemy.max_hp}"
+                };
+
+                if (enemy.block > 0)
+                {
+                    parts.Add($"block={enemy.block}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(enemy.intent))
+                {
+                    parts.Add($"intent={enemy.intent}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(enemy.intent_details) &&
+                    !string.Equals(enemy.intent_details, enemy.intent, StringComparison.Ordinal))
+                {
+                    parts.Add($"detail={enemy.intent_details}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(enemy.intent_id))
+                {
+                    parts.Add($"move_id={enemy.intent_id}");
+                }
+
+                return string.Join(" | ", parts);
+            }));
     }
 }

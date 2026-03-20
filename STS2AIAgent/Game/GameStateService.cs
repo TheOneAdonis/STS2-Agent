@@ -21,6 +21,7 @@ using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -50,8 +51,8 @@ namespace STS2AIAgent.Game;
 
 internal static class GameStateService
 {
-    private const int StateVersion = 5;
-    private const int AgentViewVersion = 1;
+    private const int StateVersion = 6;
+    private const int AgentViewVersion = 2;
 
     public static GameStatePayload BuildStatePayload()
     {
@@ -1282,6 +1283,18 @@ internal static class GameStateService
         }
     }
 
+    private static T SafeRead<T>(Func<T> getter, T fallback)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
     private static bool SafeReadBool(Func<bool> getter, bool fallback = false)
     {
         try
@@ -2025,10 +2038,13 @@ internal static class GameStateService
             enemies = combat.enemies.Select(enemy => new
             {
                 i = enemy.index,
+                line = FormatEnemyLine(enemy),
                 name = enemy.name,
                 hp = $"{enemy.current_hp}/{enemy.max_hp}",
                 block = enemy.block,
                 intent = enemy.intent,
+                intent_id = enemy.intent_id,
+                intent_details = enemy.intent_details,
                 alive = enemy.is_alive,
                 hittable = enemy.is_hittable
             }).ToArray()
@@ -2536,6 +2552,32 @@ internal static class GameStateService
     private static string FormatOrbLine(CombatOrbPayload orb)
     {
         return $"{orb.name} 被动{orb.passive_value}/激发{orb.evoke_value}";
+    }
+
+    private static string FormatEnemyLine(CombatEnemyPayload enemy)
+    {
+        var segments = new List<string>
+        {
+            enemy.name,
+            $"HP {enemy.current_hp}/{enemy.max_hp}"
+        };
+
+        if (enemy.block > 0)
+        {
+            segments.Add($"格挡 {enemy.block}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(enemy.intent))
+        {
+            segments.Add($"意图 {enemy.intent}");
+        }
+
+        if (!enemy.is_hittable)
+        {
+            segments.Add("不可选中");
+        }
+
+        return string.Join(" | ", segments);
     }
 
     private static string FormatPotionLine(RunPotionPayload potion)
@@ -3433,6 +3475,8 @@ internal static class GameStateService
 
     private static CombatEnemyPayload BuildEnemyPayload(Creature enemy, int index)
     {
+        var (intentId, intentSummary, intentDetails) = BuildEnemyIntentInfo(enemy);
+
         return new CombatEnemyPayload
         {
             index = index,
@@ -3443,7 +3487,146 @@ internal static class GameStateService
             block = enemy.Block,
             is_alive = enemy.IsAlive,
             is_hittable = enemy.IsHittable,
-            intent = enemy.Monster?.NextMove?.Id
+            intent = intentSummary,
+            intent_id = intentId,
+            intent_details = intentDetails
+        };
+    }
+
+    private static (string? intentId, string? summary, string? details) BuildEnemyIntentInfo(Creature enemy)
+    {
+        var monster = enemy.Monster;
+        var intentId = SafeReadString(() => monster?.NextMove?.Id);
+        if (monster == null)
+        {
+            return (string.IsNullOrWhiteSpace(intentId) ? null : intentId, null, null);
+        }
+
+        var targets = SafeRead(() => (IReadOnlyList<Creature>?)monster.CombatState?.GetOpponentsOf(enemy), null)
+            ?? Array.Empty<Creature>();
+        var intents = SafeRead(() => monster.NextMove?.Intents?.Where(intent => intent != null).ToArray(), null)
+            ?? Array.Empty<AbstractIntent>();
+
+        var summaries = new List<string>();
+        var details = new List<string>();
+
+        foreach (var intent in intents)
+        {
+            var summary = FormatIntentSummary(intent, targets, enemy);
+            if (!string.IsNullOrWhiteSpace(summary) &&
+                !summaries.Contains(summary, StringComparer.Ordinal))
+            {
+                summaries.Add(summary);
+            }
+
+            var detail = FormatIntentDetails(intent, targets, enemy);
+            if (!string.IsNullOrWhiteSpace(detail) &&
+                !details.Contains(detail, StringComparer.Ordinal))
+            {
+                details.Add(detail);
+            }
+        }
+
+        if (summaries.Count == 0)
+        {
+            var fallbackSummary = SafeRead(() => monster.IntendsToAttack, false)
+                ? "攻击"
+                : "未知";
+            summaries.Add(fallbackSummary);
+        }
+
+        return (
+            string.IsNullOrWhiteSpace(intentId) ? null : intentId,
+            string.Join(" + ", summaries),
+            details.Count == 0 ? null : string.Join("；", details));
+    }
+
+    private static string FormatIntentSummary(
+        AbstractIntent intent,
+        IReadOnlyList<Creature> targets,
+        Creature owner)
+    {
+        if (intent is AttackIntent attackIntent)
+        {
+            var damage = SafeRead(() => attackIntent.GetSingleDamage(targets, owner), 0);
+            var repeats = Math.Max(1, SafeRead(() => attackIntent.Repeats, 1));
+            var prefix = intent.IntentType == IntentType.DeathBlow ? "致命攻击" : "攻击";
+            return repeats > 1
+                ? $"{prefix} {damage}x{repeats}"
+                : $"{prefix} {damage}";
+        }
+
+        if (intent is StatusIntent statusIntent)
+        {
+            var cardCount = Math.Max(0, SafeRead(() => statusIntent.CardCount, 0));
+            return cardCount > 0
+                ? $"塞入状态牌 {cardCount}"
+                : "塞入状态牌";
+        }
+
+        var label = NormalizeCardRulesText(SafeReadString(() => intent.GetIntentLabel(targets, owner).GetFormattedText()));
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            return label;
+        }
+
+        var description = NormalizeCardRulesText(SafeReadString(() => intent.GetHoverTip(targets, owner).Description));
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            return description;
+        }
+
+        var title = NormalizeCardRulesText(SafeReadString(() => intent.GetHoverTip(targets, owner).Title));
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            return title;
+        }
+
+        return GetIntentTypeLabel(intent.IntentType);
+    }
+
+    private static string? FormatIntentDetails(
+        AbstractIntent intent,
+        IReadOnlyList<Creature> targets,
+        Creature owner)
+    {
+        var description = NormalizeCardRulesText(SafeReadString(() => intent.GetHoverTip(targets, owner).Description));
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            return description;
+        }
+
+        if (intent is AttackIntent attackIntent)
+        {
+            var damage = SafeRead(() => attackIntent.GetSingleDamage(targets, owner), 0);
+            var repeats = Math.Max(1, SafeRead(() => attackIntent.Repeats, 1));
+            return repeats > 1
+                ? $"造成 {damage} 点伤害，共 {repeats} 次。"
+                : $"造成 {damage} 点伤害。";
+        }
+
+        return null;
+    }
+
+    private static string GetIntentTypeLabel(IntentType intentType)
+    {
+        return intentType switch
+        {
+            IntentType.Attack => "攻击",
+            IntentType.Buff => "强化",
+            IntentType.Debuff => "弱化",
+            IntentType.DebuffStrong => "强力弱化",
+            IntentType.Defend => "防御",
+            IntentType.Escape => "逃跑",
+            IntentType.Heal => "治疗",
+            IntentType.Hidden => "隐藏",
+            IntentType.Summon => "召唤",
+            IntentType.Sleep => "睡眠",
+            IntentType.Stun => "眩晕",
+            IntentType.StatusCard => "塞入状态牌",
+            IntentType.CardDebuff => "卡牌弱化",
+            IntentType.DeathBlow => "致命攻击",
+            _ => "未知"
         };
     }
 
@@ -5078,6 +5261,10 @@ internal sealed class CombatEnemyPayload
     public bool is_hittable { get; init; }
 
     public string? intent { get; init; }
+
+    public string? intent_id { get; init; }
+
+    public string? intent_details { get; init; }
 }
 
 internal sealed class RewardPayload

@@ -20,6 +20,8 @@ public sealed class AgentConfig
 
     public bool auto_combat_loop { get; set; }
 
+    public bool debug_mode { get; set; }
+
     public Dictionary<string, string> character_combat_prompts { get; set; } = new(PromptKeyComparer);
 
     public Dictionary<string, string> character_route_prompts { get; set; } = new(PromptKeyComparer);
@@ -36,6 +38,7 @@ public sealed class AgentConfig
             temperature = temperature,
             auto_execute = auto_execute,
             auto_combat_loop = auto_combat_loop,
+            debug_mode = debug_mode,
             character_combat_prompts = new Dictionary<string, string>(character_combat_prompts, PromptKeyComparer),
             character_route_prompts = new Dictionary<string, string>(character_route_prompts, PromptKeyComparer)
         };

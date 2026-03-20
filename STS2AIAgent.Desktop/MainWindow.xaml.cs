@@ -86,7 +86,13 @@ public partial class MainWindow : Window
             {
                 var config = CollectManagedConfig(enableAgent: _latestSnapshot?.agent_enabled == true);
                 await PersistConfigAsync(config, pushToGame: _gameConnected);
-                SetStatusHint(_gameConnected ? "配置已保存并同步到游戏内服务。" : "配置已保存，本次会在游戏连接后生效。", stickySeconds: 6);
+                var message = _gameConnected ? "配置已保存并同步。" : "配置已保存，等待游戏连接后生效。";
+                if (config.debug_mode)
+                {
+                    message += " 已开启调试日志。";
+                }
+
+                SetStatusHint(message, stickySeconds: 8);
             });
         }
         catch (Exception ex)
@@ -134,7 +140,7 @@ public partial class MainWindow : Window
                 await _apiClient.StartAsync(CancellationToken.None);
                 await RefreshSnapshotAsync(force: true);
                 HideInlineNotice();
-                SetStatusHint("AI 托管已启动，将根据当前状态自动切换战斗 Agent 或路线 Agent。", stickySeconds: 6);
+                SetStatusHint("AI 托管已启动。", stickySeconds: 6);
             });
         }
         catch (Exception ex)
@@ -202,6 +208,17 @@ public partial class MainWindow : Window
         }
 
         _draftConfig.api_key = ApiKeyBox.Password.Trim();
+        UpdateControlStates();
+    }
+
+    private void DebugModeCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressInputEvents)
+        {
+            return;
+        }
+
+        _draftConfig.debug_mode = DebugModeCheckBox.IsChecked == true;
         UpdateControlStates();
     }
 
@@ -283,13 +300,14 @@ public partial class MainWindow : Window
     {
         try
         {
+            AiDefaultPrompts.EnsureLocalConfigExists(_configPath);
             _draftConfig = NormalizeConfig(File.Exists(_configPath)
                 ? JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(_configPath), JsonOptions) ?? new AgentConfig()
                 : new AgentConfig());
         }
         catch
         {
-            _draftConfig = new AgentConfig();
+            _draftConfig = NormalizeConfig(new AgentConfig());
         }
 
         ApplyDraftToInputs();
@@ -306,6 +324,7 @@ public partial class MainWindow : Window
         config.temperature = 0.2d;
         config.auto_execute = true;
         config.auto_combat_loop = true;
+        config.debug_mode = DebugModeCheckBox.IsChecked == true;
         UpdateCurrentCharacterPrompt(config.character_combat_prompts, CombatPromptTextBox.Text);
         UpdateCurrentCharacterPrompt(config.character_route_prompts, RoutePromptTextBox.Text);
         return NormalizeConfig(config);
@@ -321,6 +340,7 @@ public partial class MainWindow : Window
             ? "gpt-4.1-mini"
             : _draftConfig.model;
         ApiKeyBox.Password = _draftConfig.api_key ?? string.Empty;
+        DebugModeCheckBox.IsChecked = _draftConfig.debug_mode;
         _suppressInputEvents = false;
         SyncPromptEditors(forceReload: true);
         UpdateControlStates();
@@ -388,7 +408,7 @@ public partial class MainWindow : Window
         SetBadge(GameStatusBadge, GameStatusTextBlock, "游戏已连接", GoodBadgeBackground, GoodBadgeBorder);
         if (DateTime.UtcNow >= _statusHintStickyUntilUtc)
         {
-            SetStatusHintSilently($"已连接游戏内服务 · 协议 {health.protocol_version} · 游戏 {health.game_version}");
+            SetStatusHintSilently($"已连接 · 协议 {health.protocol_version} · 游戏 {health.game_version}");
         }
     }
 
@@ -406,9 +426,9 @@ public partial class MainWindow : Window
 
         CharacterNameTextBlock.Text = ResolveCharacterDisplayName(snapshot);
         CharacterIdTextBlock.Text = string.IsNullOrWhiteSpace(snapshot.current_character_id)
-            ? "当前角色提示词会在进入对局后自动切换。"
-            : $"角色 ID：{snapshot.current_character_id}";
-        ScreenPhaseTextBlock.Text = $"当前界面：{TranslateScreen(snapshot.current_screen)}\n当前阶段：{TranslatePhase(snapshot.session_phase)}";
+            ? "未进入对局"
+            : $"ID {snapshot.current_character_id}";
+        ScreenPhaseTextBlock.Text = $"{TranslateScreen(snapshot.current_screen)} / {TranslatePhase(snapshot.session_phase)}";
         PromptOwnerTextBlock.Text = ResolvePromptOwnerText(snapshot);
         var canStart = CanStartFromSnapshot(snapshot);
         if (canStart || snapshot.agent_enabled)
@@ -417,15 +437,15 @@ public partial class MainWindow : Window
         }
 
         EntryGuardTextBlock.Text = canStart
-            ? (_agentRunning ? "AI 正在托管本局爬塔。" : snapshot.agent_enabled ? "AI 已启动，正在等待下一次可执行决策。" : "已进入对局，可开始托管。")
-            : Coalesce(snapshot.start_block_reason, "请先进入一局爬塔后再启动托管。");
+            ? (_agentRunning ? "自动托管中" : snapshot.agent_enabled ? "等待下一步" : "可启动")
+            : Coalesce(snapshot.start_block_reason, "进入对局后可启动。");
         EditHintTextBlock.Text = _agentRunning
-            ? "AI 爬塔中，提示词已锁定"
+            ? "运行中，提示词锁定"
             : snapshot.agent_enabled
-                ? "AI 已启动，等待进入可执行状态"
+                ? "AI 已启动，等待下一步"
                 : string.IsNullOrWhiteSpace(_currentPromptKey)
-                    ? "进入任意角色后即可编辑提示词"
-                    : "未运行，可编辑当前角色提示词";
+                    ? "进入角色后可编辑提示词"
+                    : "可编辑当前角色提示词";
 
         SyncPromptEditors(forceReload: false);
         RenderActiveContext(snapshot);
@@ -437,8 +457,8 @@ public partial class MainWindow : Window
         else if (DateTime.UtcNow >= _statusHintStickyUntilUtc)
         {
             SetStatusHintSilently(canStart
-                ? (_agentRunning ? "AI 托管中，会自动在战斗 Agent 与路线 Agent 间切换。" : snapshot.agent_enabled ? "AI 已启动，等待下一次可执行决策。" : "已进入对局，随时可以开始托管。")
-                : Coalesce(snapshot.start_block_reason, "请先进入一局爬塔后再启动托管。"));
+                ? (_agentRunning ? "AI 托管中。" : snapshot.agent_enabled ? "AI 已启动，等待下一步。" : "已进入对局，可开始托管。")
+                : Coalesce(snapshot.start_block_reason, "进入对局后可启动。"));
         }
     }
 
@@ -452,18 +472,18 @@ public partial class MainWindow : Window
             AgentPlanTextBlock.Text = "暂无计划";
             AgentReasonTextBlock.Text = "暂无推理";
             AgentActionTextBlock.Text = "正在观察";
-            AgentErrorTextBlock.Text = Coalesce(snapshot.error, "当前没有错误。");
+            AgentErrorTextBlock.Text = Coalesce(snapshot.error, "无错误");
             return;
         }
 
         var runtimeLabel = string.Equals(context.runtime, "combat", StringComparison.OrdinalIgnoreCase)
-            ? "正在战斗"
-            : "正在爬塔";
+            ? "战斗 Agent"
+            : "路线 Agent";
         ActiveAgentTitleTextBlock.Text = runtimeLabel;
         AgentPlanTextBlock.Text = Coalesce(context.plan_summary, "暂无计划");
         AgentReasonTextBlock.Text = Coalesce(context.reasoning, "暂无推理");
         AgentActionTextBlock.Text = BuildRuntimeAction(context);
-        AgentErrorTextBlock.Text = Coalesce(context.error, "当前没有错误。");
+        AgentErrorTextBlock.Text = Coalesce(context.error, "无错误");
     }
 
     private void RenderDisconnected(string message)
@@ -478,18 +498,18 @@ public partial class MainWindow : Window
     private void ResetUiForDisconnectedState()
     {
         CharacterNameTextBlock.Text = "等待进入对局";
-        CharacterIdTextBlock.Text = "当前角色提示词会在进入对局后自动切换。";
-        ScreenPhaseTextBlock.Text = "当前界面：主菜单\n当前阶段：菜单阶段";
+        CharacterIdTextBlock.Text = "未进入对局";
+        ScreenPhaseTextBlock.Text = "主菜单 / 菜单阶段";
         PromptOwnerTextBlock.Text = ResolvePromptOwnerText(snapshot: null);
-        EntryGuardTextBlock.Text = "等待进入一局对局后再启动托管。";
+        EntryGuardTextBlock.Text = "进入对局后可启动。";
         EditHintTextBlock.Text = string.IsNullOrWhiteSpace(_currentPromptKey)
-            ? "进入任意角色后即可编辑提示词"
-            : "未连接游戏，仍可编辑上次角色提示词";
+            ? "进入角色后可编辑提示词"
+            : "未连接游戏，可继续编辑";
         ActiveAgentTitleTextBlock.Text = "等待中";
         AgentPlanTextBlock.Text = "暂无计划";
         AgentReasonTextBlock.Text = "暂无推理";
         AgentActionTextBlock.Text = "正在观察";
-        AgentErrorTextBlock.Text = "当前没有错误。";
+        AgentErrorTextBlock.Text = "无错误";
         HideInlineNotice();
         SyncPromptEditors(forceReload: true);
     }
@@ -505,8 +525,8 @@ public partial class MainWindow : Window
             _currentPromptOwnerName = ResolveCharacterDisplayName(_latestSnapshot!);
         }
 
-        var combatPrompt = ReadPrompt(_draftConfig.character_combat_prompts, _currentPromptKey);
-        var routePrompt = ReadPrompt(_draftConfig.character_route_prompts, _currentPromptKey);
+        var combatPrompt = ReadPrompt(_draftConfig.character_combat_prompts, _currentPromptKey, isCombat: true);
+        var routePrompt = ReadPrompt(_draftConfig.character_route_prompts, _currentPromptKey, isCombat: false);
         if (forceReload || keyChanged || !CombatPromptTextBox.IsKeyboardFocusWithin)
         {
             SetTextBoxText(CombatPromptTextBox, combatPrompt);
@@ -551,6 +571,7 @@ public partial class MainWindow : Window
         BaseUrlTextBox.IsEnabled = !_commandInFlight && !_agentRunning;
         ModelTextBox.IsEnabled = !_commandInFlight && !_agentRunning;
         ApiKeyBox.IsEnabled = !_commandInFlight && !_agentRunning;
+        DebugModeCheckBox.IsEnabled = !_commandInFlight && !_agentRunning;
         CombatPromptTextBox.IsEnabled = canEditPrompts;
         RoutePromptTextBox.IsEnabled = canEditPrompts;
 
@@ -630,7 +651,7 @@ public partial class MainWindow : Window
 
         if (IsAgentRunning(snapshot))
         {
-            return "AI 爬塔中";
+            return "托管中";
         }
 
         return snapshot.agent_enabled ? TranslateStatus(Coalesce(snapshot.status, "就绪")) : "未启动";
@@ -720,15 +741,41 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(snapshot.current_character_id))
         {
-            return snapshot.current_character_id.Trim();
+            return AiDefaultPrompts.ResolvePromptKey(snapshot.current_character_id);
         }
 
-        return snapshot.current_character_name?.Trim() ?? string.Empty;
+        return AiDefaultPrompts.ResolvePromptKey(snapshot.current_character_name);
     }
 
     private static bool CanStartFromSnapshot(AgentSnapshot? snapshot)
     {
-        return snapshot?.can_start_automation == true;
+        if (snapshot == null)
+        {
+            return false;
+        }
+
+        if (snapshot.can_start_automation)
+        {
+            return true;
+        }
+
+        if (string.Equals(snapshot.session_phase, "run", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return snapshot.current_screen switch
+        {
+            "COMBAT" => true,
+            "MAP" => true,
+            "EVENT" => true,
+            "REST" => true,
+            "SHOP" => true,
+            "CHEST" => true,
+            "REWARD" => true,
+            "CARD_SELECTION" => true,
+            _ => false
+        };
     }
 
     private static bool IsWaitingForRun(AgentSnapshot snapshot)
@@ -738,14 +785,9 @@ public partial class MainWindow : Window
             !CanStartFromSnapshot(snapshot);
     }
 
-    private static string ReadPrompt(IReadOnlyDictionary<string, string> promptMap, string promptKey)
+    private static string ReadPrompt(IReadOnlyDictionary<string, string> promptMap, string promptKey, bool isCombat)
     {
-        if (string.IsNullOrWhiteSpace(promptKey))
-        {
-            return string.Empty;
-        }
-
-        return promptMap.TryGetValue(promptKey, out var value) ? value : string.Empty;
+        return AiDefaultPrompts.ReadPrompt(promptMap, promptKey, isCombat);
     }
 
     private void SetTextBoxText(TextBox textBox, string value)
@@ -822,16 +864,16 @@ public partial class MainWindow : Window
     {
         if (!string.IsNullOrWhiteSpace(GetPromptKey(snapshot)))
         {
-            return $"正在编辑：{ResolveCharacterDisplayName(snapshot!)} 的专属提示词";
+            return $"编辑角色：{ResolveCharacterDisplayName(snapshot!)}";
         }
 
         if (!string.IsNullOrWhiteSpace(_currentPromptKey))
         {
             var ownerName = string.IsNullOrWhiteSpace(_currentPromptOwnerName) ? _currentPromptKey : _currentPromptOwnerName;
-            return $"当前未检测到角色，继续编辑：{ownerName} 的专属提示词";
+            return $"继续编辑：{ownerName}";
         }
 
-        return "未检测到当前角色提示词。";
+        return "未选择角色";
     }
 
     private static SolidColorBrush CreateBrush(string hex)
@@ -862,8 +904,8 @@ public partial class MainWindow : Window
         config.base_url ??= "https://api.openai.com/v1";
         config.model ??= "gpt-4.1-mini";
         config.api_key ??= string.Empty;
-        config.character_combat_prompts ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        config.character_route_prompts ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        config.character_combat_prompts = AiDefaultPrompts.MergeCombatPrompts(config.character_combat_prompts);
+        config.character_route_prompts = AiDefaultPrompts.MergeRoutePrompts(config.character_route_prompts);
         return config;
     }
 }

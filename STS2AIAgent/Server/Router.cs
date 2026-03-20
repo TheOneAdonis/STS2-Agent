@@ -13,7 +13,7 @@ internal static class Router
 {
     private const string ServiceName = "creative-ai";
     private const string ProtocolVersion = "2026-03-11-v1";
-    private const string ModVersion = "0.15";
+    private const string ModVersion = "0.15.1";
     private const string LogPrefix = "[STS2AIAgent.Router]";
 
     private static long _requestCounter;
@@ -102,11 +102,12 @@ internal static class Router
             if (request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
                 request.Url?.AbsolutePath == "/agent/snapshot")
             {
+                var snapshot = await AiAgentService.Instance.GetSnapshotAsync(refreshObservedState: true);
                 await WriteJsonAsync(response, 200, new
                 {
                     ok = true,
                     request_id = requestId,
-                    data = AiAgentService.Instance.GetSnapshot()
+                    data = snapshot
                 });
                 statusCode = 200;
                 return;
