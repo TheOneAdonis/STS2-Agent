@@ -1,13 +1,7 @@
-https://github.com/user-attachments/assets/89353468-a299-4315-9516-e520bcbfbd4b
+
 
 # 创造性AI
-
-`创造性AI` 是一个面向《Slay the Spire 2》的本地 AI 托管方案，包含游戏内 Mod 与桌面控制台两部分：
-
-- `CreativeAI` Mod：负责读取游戏状态、暴露本地服务、执行 AI 决策
-- `CreativeAI.Desktop`：负责配置模型、编辑提示词、启动或停止托管、查看运行状态
-
-当前版本：`0.15.1`
+本 mod fork 自 https://github.com/CharTyr/STS2-Agent ，集成了其将杀戮尖塔2游戏状态和操作暴露为本地 HTTP API 的功能，并将 MCP 配置修改为了单独的控制台以简化配置流程。
 
 ## 它能做什么
 
