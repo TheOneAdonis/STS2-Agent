@@ -172,12 +172,6 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\build-mod.ps1" -Configuratio
 
 停止托管后即可继续修改。
 
-## 目录说明
-
-- `C:\Users\白泽\Desktop\工作\STS2-Agent\STS2AIAgent\`：游戏内 Mod 源码
-- `C:\Users\白泽\Desktop\工作\STS2-Agent\STS2AIAgent.Desktop\`：桌面控制台源码
-- `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\build-mod.ps1`：构建并安装
-- `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\package-release.ps1`：打包发布物
 
 ## License
 This project is licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only).
