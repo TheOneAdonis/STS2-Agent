@@ -5,7 +5,7 @@
 
 ## 它能做什么
 
-`创造性AI` 的目标不是只做一次性问答，而是持续接管一局爬塔流程。
+`创造性AI` 能够让 LLM 持续接管一局爬塔流程。
 
 它可以：
 
@@ -178,3 +178,6 @@ powershell -ExecutionPolicy Bypass -File ".\scripts\build-mod.ps1" -Configuratio
 - `C:\Users\白泽\Desktop\工作\STS2-Agent\STS2AIAgent.Desktop\`：桌面控制台源码
 - `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\build-mod.ps1`：构建并安装
 - `C:\Users\白泽\Desktop\工作\STS2-Agent\scripts\package-release.ps1`：打包发布物
+
+## License
+This project is licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only).
